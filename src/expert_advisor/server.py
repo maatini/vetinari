@@ -1,10 +1,11 @@
-"""Main MCP Server — Multi-LLM Expert Advisor.
+"""MCP Server — Multi-Expert Advisor (Lean Edition).
 
 Tools:
-- list_experts: List all available expert domains
+- list_experts: List/search experts
 - consult_expert: Get advice from a single expert
-- consult_multiple: Get advice from multiple experts in parallel
-- cost_summary: Get cumulative cost/token usage stats
+- consult_multiple_experts: Parallel expert queries (killer feature)
+- get_expert_prompt: View system prompt
+- cost_summary: Minimal cost/token log
 """
 
 from __future__ import annotations
@@ -15,28 +16,23 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from expert_advisor.config import settings
-from expert_advisor.experts.registry import registry
-from expert_advisor.routers.llm_router import ExpertAdviceResponse, get_router
+from expert_advisor.experts import registry
+from expert_advisor.llm import ExpertAdviceResponse, LLMRouter
 from expert_advisor.utils.logging import configure_logging
 
 # ── Initialization ───────────────────────────────────────────────────────────
 
 configure_logging(settings.log_level)
+mcp = FastMCP("Expert Advisor (Lean)")
+router = LLMRouter(enable_cache=settings.enable_cache)
 
 
-def _create_mcp() -> FastMCP:
-    return FastMCP("Multi-LLM Expert Advisor")
-
-
-mcp = _create_mcp()
-router = get_router()
-
-
-# ── Helper ───────────────────────────────────────────────────────────────────
+# ── Helpers ──────────────────────────────────────────────────────────────────
 
 
 def _format_response(resp: ExpertAdviceResponse) -> dict[str, Any]:
     """Format an ExpertAdviceResponse into a JSON-safe dict."""
+    usage = resp.usage
     return {
         "success": resp.success,
         "expert_id": resp.expert_id,
@@ -44,11 +40,10 @@ def _format_response(resp: ExpertAdviceResponse) -> dict[str, Any]:
         "model_used": resp.model_used,
         "content": resp.content,
         "usage": {
-            "prompt_tokens": resp.usage.prompt_tokens,
-            "completion_tokens": resp.usage.completion_tokens,
-            "total_tokens": resp.usage.total_tokens,
-            "cost_usd": round(resp.usage.cost_usd, 6),
-            "cached": resp.usage.cached,
+            "prompt_tokens": usage.prompt_tokens,
+            "completion_tokens": usage.completion_tokens,
+            "total_tokens": usage.prompt_tokens + usage.completion_tokens,
+            "cost_usd": round(usage.cost_usd, 6),
         },
         "fallback_used": resp.fallback_used,
         "retrieval_time_ms": round(resp.retrieval_time_ms, 1),
@@ -61,19 +56,17 @@ def _format_response(resp: ExpertAdviceResponse) -> dict[str, Any]:
 
 @mcp.tool(
     name="list_experts",
-    description="List all available expert domains by ID, name, description, and tags.",
+    description="List all available expert domains. Optionally filter by a search query.",
 )
 async def list_experts(query: str | None = None) -> str:
-    """List experts, optionally filtered by a search query."""
+    """List experts, optionally filtered by search query."""
     experts = registry.search(query) if query else registry.list_all()
-
     result = [
         {
             "id": e.id,
             "name": e.name,
             "description": e.description,
             "tags": e.tags,
-            "recommended_model": e.recommended_model,
         }
         for e in experts
     ]
@@ -82,10 +75,7 @@ async def list_experts(query: str | None = None) -> str:
 
 @mcp.tool(
     name="consult_expert",
-    description=(
-        "Get detailed advice from a single expert by ID. "
-        "Use list_experts first to find available experts."
-    ),
+    description="Get detailed advice from a single expert by ID.",
 )
 async def consult_expert(
     expert_id: str,
@@ -97,17 +87,11 @@ async def consult_expert(
     """Consult a single expert."""
     expert = registry.get(expert_id)
     if expert is None:
-        return json.dumps(
-            {
-                "success": False,
-                "error": (
-                    f"Unknown expert '{expert_id}'. "
-                    "Use list_experts to see available experts."
-                ),
-                "available_ids": registry.get_ids(),
-            },
-            indent=2,
-        )
+        return json.dumps({
+            "success": False,
+            "error": f"Unknown expert '{expert_id}'. Use list_experts to see available experts.",
+            "available_ids": registry.get_ids(),
+        }, indent=2)
 
     response = await router.consult(
         expert=expert,
@@ -141,15 +125,12 @@ async def consult_multiple_experts(
             unknown.append(eid)
 
     if not experts:
-        return json.dumps(
-            {
-                "success": False,
-                "error": "No valid expert IDs provided.",
-                "unknown_ids": unknown,
-                "available_ids": registry.get_ids(),
-            },
-            indent=2,
-        )
+        return json.dumps({
+            "success": False,
+            "error": "No valid expert IDs provided.",
+            "unknown_ids": unknown,
+            "available_ids": registry.get_ids(),
+        }, indent=2)
 
     responses = await router.consult_multiple(
         experts=experts,
@@ -159,68 +140,41 @@ async def consult_multiple_experts(
         max_tokens=max_tokens,
     )
 
-    result = {
+    return json.dumps({
         "success": True,
         "query": query,
         "responses": [_format_response(r) for r in responses],
         "unknown_ids": unknown,
-    }
-    return json.dumps(result, indent=2)
+    }, indent=2)
 
 
 @mcp.tool(
     name="cost_summary",
-    description="Get cumulative cost and token usage statistics across all consultations.",
+    description="Get cumulative cost and token usage statistics.",
 )
 async def cost_summary() -> str:
     """Return cost tracking summary."""
-    summary = router.cost_tracker.get_summary()
-    return json.dumps(summary, indent=2)
-
-
-@mcp.tool(
-    name="search_experts",
-    description=(
-        "Search for experts by name, description, or tags. "
-        "Returns matching expert IDs and descriptions."
-    ),
-)
-async def search_experts(query: str) -> str:
-    """Search for experts matching a query string."""
-    results = registry.search(query)
-    return json.dumps(
-        [
-            {"id": e.id, "name": e.name, "description": e.description, "tags": e.tags}
-            for e in results
-        ],
-        indent=2,
-    )
+    return json.dumps({"summary": router.cost_log.summary}, indent=2)
 
 
 @mcp.tool(
     name="get_expert_prompt",
-    description=(
-        "Get the full system prompt for a specific expert. "
-        "Useful for debugging or custom integration."
-    ),
+    description="Get the full system prompt for a specific expert. Useful for debugging.",
 )
 async def get_expert_prompt(expert_id: str) -> str:
     """Get the system prompt for an expert."""
     expert = registry.get(expert_id)
     if expert is None:
-        return json.dumps(
-            {"error": f"Unknown expert '{expert_id}'", "available_ids": registry.get_ids()},
-            indent=2,
-        )
-    return json.dumps(
-        {
-            "expert_id": expert.id,
-            "expert_name": expert.name,
-            "prompt": expert.prompt,
-            "recommended_model": expert.recommended_model,
-        },
-        indent=2,
-    )
+        return json.dumps({
+            "error": f"Unknown expert '{expert_id}'",
+            "available_ids": registry.get_ids(),
+        }, indent=2)
+    return json.dumps({
+        "expert_id": expert.id,
+        "expert_name": expert.name,
+        "prompt": expert.prompt,
+        "recommended_model": expert.recommended_model,
+    }, indent=2)
 
 
 # ── Entry Point ──────────────────────────────────────────────────────────────
