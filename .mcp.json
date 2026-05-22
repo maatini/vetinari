@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "multi-llm-vetinari": {
+      "command": "uv",
+      "args": ["run", "python", "-m", "expert_advisor.server"],
+      "cwd": "/Volumes/SSD2TB/work/antigravity/vetinari",
+      "lifecycle": "lazy",
+      "idleTimeout": 15
+    }
+  }
+}
+
