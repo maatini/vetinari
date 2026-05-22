@@ -1,4 +1,4 @@
-"""Tests for MCP server tools."""
+"""Tests for MCP server tools (Lean Edition)."""
 
 from __future__ import annotations
 
@@ -12,20 +12,18 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_list_experts():
-    """list_experts should return all 11 experts."""
+    """list_experts should return all 4 experts."""
     from expert_advisor.server import list_experts
 
     result_json = await list_experts()
     result = json.loads(result_json)
     assert isinstance(result, list)
-    assert len(result) == 11
-    # Check structure
+    assert len(result) == 4
     first = result[0]
     assert "id" in first
     assert "name" in first
     assert "description" in first
     assert "tags" in first
-    assert "recommended_model" in first
 
 
 @pytest.mark.asyncio
@@ -36,21 +34,7 @@ async def test_list_experts_with_query():
     result_json = await list_experts(query="python")
     result = json.loads(result_json)
     assert len(result) == 1
-    assert result[0]["id"] == "python-expert"
-
-
-# ── Test search_experts ──────────────────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_search_experts():
-    """search_experts should find matching experts."""
-    from expert_advisor.server import search_experts
-
-    result_json = await search_experts("security")
-    result = json.loads(result_json)
-    assert len(result) >= 1
-    assert any(e["id"] == "security" for e in result)
+    assert result[0]["id"] == "python"
 
 
 # ── Test get_expert_prompt ───────────────────────────────────────────────────
@@ -65,7 +49,7 @@ async def test_get_expert_prompt():
     result = json.loads(result_json)
     assert result["expert_id"] == "architect"
     assert "Software Architect" in result["expert_name"]
-    assert len(result["prompt"]) > 100
+    assert len(result["prompt"]) > 50
 
 
 @pytest.mark.asyncio
@@ -85,16 +69,15 @@ async def test_get_expert_prompt_unknown():
 @pytest.mark.asyncio
 async def test_consult_expert_success():
     """consult_expert should return advice from the expert."""
+    from expert_advisor.llm import UsageInfo
     from expert_advisor.server import consult_expert, router
 
-    # Mock the router's consult method
     mock_resp = AsyncMock()
     mock_resp.success = True
     mock_resp.expert_id = "architect"
     mock_resp.expert_name = "Software Architect"
     mock_resp.model_used = "gpt-4o-mini"
     mock_resp.content = "Test architecture advice"
-    from expert_advisor.utils.cost_tracker import UsageInfo
     mock_resp.usage = UsageInfo(prompt_tokens=100, completion_tokens=50, model="gpt-4o-mini")
     mock_resp.fallback_used = False
     mock_resp.retrieval_time_ms = 123.4
@@ -127,8 +110,8 @@ async def test_consult_expert_unknown():
 @pytest.mark.asyncio
 async def test_consult_multiple_experts():
     """consult_multiple_experts should query multiple experts."""
+    from expert_advisor.llm import UsageInfo
     from expert_advisor.server import consult_multiple_experts, router
-    from expert_advisor.utils.cost_tracker import UsageInfo
 
     def make_resp(eid, name):
         resp = AsyncMock()
@@ -145,7 +128,7 @@ async def test_consult_multiple_experts():
 
     mock_responses = [
         make_resp("architect", "Software Architect"),
-        make_resp("security", "Cybersecurity Analyst"),
+        make_resp("security", "Security Engineer"),
     ]
 
     with patch.object(router, "consult_multiple", new_callable=AsyncMock) as mock_multi:
@@ -186,6 +169,5 @@ async def test_cost_summary():
 
     result_json = await cost_summary()
     result = json.loads(result_json)
-    assert "total_cost_usd" in result
-    assert "total_tokens" in result
-    assert "total_calls" in result
+    assert "summary" in result
+    assert "calls=" in result["summary"]

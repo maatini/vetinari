@@ -4,18 +4,16 @@ from __future__ import annotations
 
 import pytest
 
-from expert_advisor.routers.llm_router import LLMRouter
-from expert_advisor.utils.cost_tracker import CostTracker
+from expert_advisor.llm import CostLog, LLMRouter
 
 
 @pytest.fixture
-def cost_tracker() -> CostTracker:
-    """Fresh cost tracker for each test."""
-    return CostTracker()
+def cost_log() -> CostLog:
+    """Fresh cost log for each test."""
+    return CostLog()
 
 
 @pytest.fixture
 def router() -> LLMRouter:
-    """Router with mocked litellm."""
-    # The router will lazily import litellm; tests mock as needed
+    """Router instance for testing."""
     return LLMRouter()
