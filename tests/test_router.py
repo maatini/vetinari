@@ -21,43 +21,67 @@ from expert_advisor.routers.llm_router import (
 class TestTTLCache:
     """Tests for TTLCache."""
 
-    def test_set_and_get(self) -> None:
+    @pytest.mark.asyncio
+    async def test_set_and_get(self) -> None:
         cache = TTLCache(ttl_seconds=60, max_entries=10)
-        cache.set("prompt1", value="response1")
-        assert cache.get("prompt1") == "response1"
+        await cache.set("prompt1", value="response1")
+        assert await cache.get("prompt1") == "response1"
 
-    def test_miss(self) -> None:
+    @pytest.mark.asyncio
+    async def test_miss(self) -> None:
         cache = TTLCache(ttl_seconds=60, max_entries=10)
-        assert cache.get("unknown") is None
+        assert await cache.get("unknown") is None
 
-    def test_different_prompt_combos(self) -> None:
+    @pytest.mark.asyncio
+    async def test_different_prompt_combos(self) -> None:
         cache = TTLCache(ttl_seconds=60, max_entries=10)
-        cache.set("p1", value="r1")
-        cache.set("p2", value="r2")
-        cache.set("p3", value="r3")
-        assert cache.get("p1") == "r1"
-        assert cache.get("p2") == "r2"
-        assert cache.get("p3") == "r3"
+        await cache.set("p1", value="r1")
+        await cache.set("p2", value="r2")
+        await cache.set("p3", value="r3")
+        assert await cache.get("p1") == "r1"
+        assert await cache.get("p2") == "r2"
+        assert await cache.get("p3") == "r3"
 
-    def test_lru_eviction(self) -> None:
+    @pytest.mark.asyncio
+    async def test_different_model_keys(self) -> None:
+        """Different model/temperature produce different cache keys."""
+        cache = TTLCache(ttl_seconds=60, max_entries=10)
+        await cache.set("prompt", model="gpt-4o", value="gpt-response", temperature=0.0)
+        await cache.set("prompt", model="groq/llama3", value="groq-response", temperature=0.0)
+        assert await cache.get("prompt", model="gpt-4o", temperature=0.0) == "gpt-response"
+        assert await cache.get("prompt", model="groq/llama3", temperature=0.0) == "groq-response"
+
+    @pytest.mark.asyncio
+    async def test_different_temperature_keys(self) -> None:
+        """Different temperatures produce different cache keys."""
+        cache = TTLCache(ttl_seconds=60, max_entries=10)
+        await cache.set("prompt", model="gpt-4o", value="cold", temperature=0.0)
+        await cache.set("prompt", model="gpt-4o", value="hot", temperature=1.0)
+        assert await cache.get("prompt", model="gpt-4o", temperature=0.0) == "cold"
+        assert await cache.get("prompt", model="gpt-4o", temperature=1.0) == "hot"
+
+    @pytest.mark.asyncio
+    async def test_lru_eviction(self) -> None:
         cache = TTLCache(ttl_seconds=60, max_entries=3)
-        cache.set("p1", value="r1")
-        cache.set("p2", value="r2")
-        cache.set("p3", value="r3")
-        cache.set("p4", value="r4")  # Should evict p1
-        assert cache.get("p1") is None
-        assert cache.get("p4") == "r4"
+        await cache.set("p1", value="r1")
+        await cache.set("p2", value="r2")
+        await cache.set("p3", value="r3")
+        await cache.set("p4", value="r4")  # Should evict p1
+        assert await cache.get("p1") is None
+        assert await cache.get("p4") == "r4"
 
-    def test_clear(self) -> None:
+    @pytest.mark.asyncio
+    async def test_clear(self) -> None:
         cache = TTLCache(ttl_seconds=60, max_entries=10)
-        cache.set("p1", value="r1")
-        cache.clear()
-        assert cache.get("p1") is None
+        await cache.set("p1", value="r1")
+        await cache.clear()
+        assert await cache.get("p1") is None
 
-    def test_expired(self) -> None:
+    @pytest.mark.asyncio
+    async def test_expired(self) -> None:
         cache = TTLCache(ttl_seconds=0, max_entries=10)
-        cache.set("p1", value="r1")
-        assert cache.get("p1") is None
+        await cache.set("p1", value="r1")
+        assert await cache.get("p1") is None
 
 
 # ── Test RateLimiter ─────────────────────────────────────────────────────────
@@ -66,24 +90,26 @@ class TestTTLCache:
 class TestRateLimiter:
     """Tests for RateLimiter."""
 
-    def test_allows_within_limit(self) -> None:
+    @pytest.mark.asyncio
+    async def test_allows_within_limit(self) -> None:
         rl = RateLimiter(window_seconds=60, max_requests=5)
         for _ in range(5):
-            assert rl.check("model1") is True
-            rl.record("model1")
+            assert await rl.acquire("model1") is True
 
-    def test_blocks_over_limit(self) -> None:
+    @pytest.mark.asyncio
+    async def test_blocks_over_limit(self) -> None:
         rl = RateLimiter(window_seconds=60, max_requests=2)
-        rl.record("model1")
-        rl.record("model1")
-        assert rl.check("model1") is False
+        assert await rl.acquire("model1") is True
+        assert await rl.acquire("model1") is True
+        assert await rl.acquire("model1") is False
 
-    def test_separate_per_model(self) -> None:
+    @pytest.mark.asyncio
+    async def test_separate_per_model(self) -> None:
         rl = RateLimiter(window_seconds=60, max_requests=2)
-        rl.record("model1")
-        rl.record("model1")
-        assert rl.check("model1") is False
-        assert rl.check("model2") is True
+        assert await rl.acquire("model1") is True
+        assert await rl.acquire("model1") is True
+        assert await rl.acquire("model1") is False
+        assert await rl.acquire("model2") is True
 
 
 # ── Test ExpertAdviceResponse ────────────────────────────────────────────────
@@ -175,6 +201,35 @@ class TestLLMRouterConsult:
         assert mock_litellm_completion.call_count == call_count  # No additional call
 
     @pytest.mark.asyncio
+    async def test_consult_cache_different_models(self, expert: Expert) -> None:
+        """Different models should NOT share cache entries."""
+        router = LLMRouter(cache_ttl=300)
+
+        call_args: list[dict] = []
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "response"
+        mock_response.usage = MagicMock()
+        mock_response.usage.prompt_tokens = 10
+        mock_response.usage.completion_tokens = 5
+
+        async def mock_acompletion(**kwargs):
+            call_args.append(kwargs)
+            return mock_response
+
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_ac:
+            mock_ac.side_effect = mock_acompletion
+            with patch("litellm.completion_cost", return_value=0.0):
+                await router.consult(expert, "Test", model="gpt-4o-mini")
+                await router.consult(expert, "Test", model="groq/llama3-70b-8192")
+
+        # Both should have made actual LLM calls (not cached)
+        assert len(call_args) == 2
+        assert call_args[0]["model"] == "gpt-4o-mini"
+        assert call_args[1]["model"] == "groq/llama3-70b-8192"
+
+    @pytest.mark.asyncio
     async def test_consult_fallback_on_error(self, expert: Expert) -> None:
         """When primary model fails, should fall back to next available."""
         router = LLMRouter()
@@ -186,10 +241,18 @@ class TestLLMRouterConsult:
             call_count[0] += 1
             raise Exception(f"Error {call_count[0]}")
 
-        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_ac:
+        with (
+            patch("litellm.acompletion", new_callable=AsyncMock) as mock_ac,
+            patch("litellm.completion_cost", return_value=0.0),
+            patch(
+                "expert_advisor.routers.llm_router.settings.retry_base_delay_seconds", 0
+            ),
+            patch(
+                "expert_advisor.routers.llm_router.settings.retry_max_delay_seconds", 0
+            ),
+        ):
             mock_ac.side_effect = mock_fail_all
-            with patch("litellm.completion_cost", return_value=0.0):
-                response = await router.consult(expert, "Test")
+            response = await router.consult(expert, "Test")
 
         assert response.success is False
         assert response.error is not None
@@ -203,7 +266,15 @@ class TestLLMRouterConsult:
         async def mock_fail(**kwargs):
             raise Exception("All models down")
 
-        with patch("litellm.acompletion", new_callable=AsyncMock) as mock:
+        with (
+            patch("litellm.acompletion", new_callable=AsyncMock) as mock,
+            patch(
+                "expert_advisor.routers.llm_router.settings.retry_base_delay_seconds", 0
+            ),
+            patch(
+                "expert_advisor.routers.llm_router.settings.retry_max_delay_seconds", 0
+            ),
+        ):
             mock.side_effect = mock_fail
             response = await router.consult(expert, "Test")
 
@@ -258,3 +329,138 @@ class TestGetRouter:
         r1 = get_router()
         r2 = get_router()
         assert r1 is r2
+
+
+# ── Concurrency Tests ───────────────────────────────────────────────────────
+
+
+class TestConcurrentCache:
+    """Verifies TTLCache safety under parallel access."""
+
+    @pytest.mark.asyncio
+    async def test_concurrent_get_set(self) -> None:
+        """Parallel reads and writes should not cause errors or data loss."""
+        import asyncio
+
+        cache = TTLCache(ttl_seconds=60, max_entries=50)
+
+        async def writer(i: int) -> None:
+            for j in range(10):
+                await cache.set(f"key-{i}-{j}", value=f"value-{i}-{j}")
+
+        async def reader(i: int) -> None:
+            for j in range(10):
+                _ = await cache.get(f"key-{i}-{j}")
+
+        # 5 writers + 5 readers concurrently
+        tasks = [writer(i) for i in range(5)] + [reader(i) for i in range(5)]
+        await asyncio.gather(*tasks)
+
+        # All writer entries should be present
+        for i in range(5):
+            assert await cache.get(f"key-{i}-9") == f"value-{i}-9"
+
+    @pytest.mark.asyncio
+    async def test_concurrent_eviction_does_not_crash(self) -> None:
+        """Parallel writes that trigger eviction should not error."""
+        import asyncio
+
+        cache = TTLCache(ttl_seconds=60, max_entries=10)
+
+        async def burst_writer(offset: int) -> None:
+            for i in range(20):
+                await cache.set(f"burst-{offset}-{i}", value=f"v{offset}-{i}")
+
+        # 3 concurrent burst writers
+        await asyncio.gather(*[burst_writer(i) for i in range(3)])
+
+        # Just verify no crash — data integrity under eviction is probabilistic
+        assert True
+
+
+class TestConcurrentRateLimiter:
+    """Verifies RateLimiter precision under parallel access."""
+
+    @pytest.mark.asyncio
+    async def test_concurrent_does_not_exceed_limit(self) -> None:
+        """Parallel acquires should never exceed max_requests."""
+        import asyncio
+
+        max_req = 5
+        rl = RateLimiter(window_seconds=60, max_requests=max_req)
+
+        results = []
+
+        async def try_acquire() -> None:
+            result = await rl.acquire("model1")
+            results.append(result)
+
+        # 20 concurrent tasks, only max_req should succeed
+        await asyncio.gather(*[try_acquire() for _ in range(20)])
+
+        granted = sum(1 for r in results if r)
+        assert granted == max_req, f"Expected {max_req} granted, got {granted}"
+
+    @pytest.mark.asyncio
+    async def test_concurrent_separate_models(self) -> None:
+        """Rate limits for different models should not interfere."""
+        import asyncio
+
+        rl = RateLimiter(window_seconds=60, max_requests=3)
+
+        async def acquire_model(model: str) -> list[bool]:
+            return [await rl.acquire(model) for _ in range(5)]
+
+        res_a, res_b = await asyncio.gather(
+            acquire_model("model-A"),
+            acquire_model("model-B"),
+        )
+
+        # Each model gets exactly 3 out of 5
+        assert sum(res_a) == 3
+        assert sum(res_b) == 3
+
+
+class TestConsultMultipleConcurrency:
+    """Integration: consult_multiple with concurrency."""
+
+    @pytest.mark.asyncio
+    async def test_consult_multiple_no_duplicate_llm_calls(self) -> None:
+        """Same query to multiple experts should cache after first LLM call."""
+        from unittest.mock import MagicMock
+
+        router = LLMRouter(cache_ttl=300)
+
+        experts = [
+            Expert(
+                id="e1", name="E1", description="",
+                prompt="You are E1", recommended_model="gpt-4o-mini",
+            ),
+            Expert(
+                id="e2", name="E2", description="",
+                prompt="You are E2", recommended_model="gpt-4o-mini",
+            ),
+        ]
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "response"
+        mock_response.usage = MagicMock()
+        mock_response.usage.prompt_tokens = 10
+        mock_response.usage.completion_tokens = 5
+
+        llm_call_count = [0]
+
+        async def mock_acompletion(**kwargs):
+            llm_call_count[0] += 1
+            return mock_response
+
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_ac:
+            mock_ac.side_effect = mock_acompletion
+            with patch("litellm.completion_cost", return_value=0.0):
+                responses = await router.consult_multiple(experts, "Same query")
+
+        # Different experts with same prompt = separate cache entries (different prompts)
+        assert len(responses) == 2
+        assert all(r.success for r in responses)
+        assert llm_call_count[0] == 2

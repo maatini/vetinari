@@ -11,6 +11,7 @@ htmlcov/
 *.log
 .venv/
 *.DS_Store
+.pi/
 node_modules/
 uv.lock
 devbox.lock

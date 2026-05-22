@@ -39,32 +39,15 @@ class ExpertAdviceResponse:
         return self.error is None
 
 
-@dataclass
-class ModelConfig:
-    """Configuration for a single LLM model/provider."""
+# ── Default Model List ───────────────────────────────────────────────────────
 
-    model: str
-    api_key_var: str
-    priority: int = 0  # Lower = higher priority
-    rpm_limit: int = 100  # Requests per minute
-
-
-# ── Default Model Configurations ─────────────────────────────────────────────
-
-DEFAULT_MODELS = [
-    # Priority 0: Best/cheapest primary models
-    ModelConfig(model="gpt-4o-mini", api_key_var="OPENAI_API_KEY", priority=0),
-    # Priority 1: Fallback models
-    ModelConfig(
-        model="anthropic/claude-3-5-sonnet-20240620",
-        api_key_var="ANTHROPIC_API_KEY",
-        priority=1,
-    ),
-    ModelConfig(model="gemini/gemini-2.0-flash", api_key_var="GEMINI_API_KEY", priority=1),
-    ModelConfig(model="deepseek/deepseek-chat", api_key_var="DEEPSEEK_API_KEY", priority=1),
-    ModelConfig(model="groq/llama3-70b-8192", api_key_var="GROQ_API_KEY", priority=2),
-    # Priority 3: Cheapest fallback
-    ModelConfig(model="gpt-3.5-turbo", api_key_var="OPENAI_API_KEY", priority=3),
+DEFAULT_MODELS: list[str] = [
+    "gpt-4o-mini",
+    "anthropic/claude-3-5-sonnet-20241022",
+    "gemini/gemini-1.5-flash",
+    "deepseek/deepseek-chat",
+    "groq/llama3-70b-8192",
+    "gpt-3.5-turbo",
 ]
 
 
@@ -72,64 +55,86 @@ DEFAULT_MODELS = [
 
 
 class TTLCache:
-    """Simple TTL-based in-memory cache with LRU eviction."""
+    """Async-safe TTL-based in-memory cache with LRU eviction."""
 
     def __init__(self, ttl_seconds: int = 300, max_entries: int = 1000) -> None:
         self._ttl = ttl_seconds
         self._max = max_entries
         self._data: OrderedDict[str, tuple[float, str]] = OrderedDict()
+        self._lock = asyncio.Lock()
 
-    def _key(self, prompt: str, model: str = "") -> str:
-        """Generate a cache key from prompt hash."""
-        return hashlib.sha256(prompt.encode()).hexdigest()
+    def _key(
+        self,
+        prompt: str,
+        model: str = "",
+        temperature: float = 0.0,
+        max_tokens: int = 0,
+    ) -> str:
+        """Generate a cache key from prompt, model, temperature, and max_tokens."""
+        raw = f"{prompt}|{model}|{temperature}|{max_tokens}"
+        return hashlib.sha256(raw.encode()).hexdigest()
 
-    def get(self, prompt: str, model: str = "") -> str | None:
-        key = self._key(prompt)
-        entry = self._data.get(key)
-        if entry is None:
-            return None
-        ts, value = entry
-        if time.monotonic() - ts > self._ttl:
-            del self._data[key]
-            return None
-        # Move to end for LRU
-        self._data.move_to_end(key)
-        return value
+    async def get(
+        self,
+        prompt: str,
+        model: str = "",
+        temperature: float = 0.0,
+        max_tokens: int = 0,
+    ) -> str | None:
+        key = self._key(prompt, model, temperature, max_tokens)
+        async with self._lock:
+            entry = self._data.get(key)
+            if entry is None:
+                return None
+            ts, value = entry
+            if time.monotonic() - ts > self._ttl:
+                del self._data[key]
+                return None
+            self._data.move_to_end(key)
+            return value
 
-    def set(self, prompt: str, model: str = "", value: str = "") -> None:
-        key = self._key(prompt)
-        self._data[key] = (time.monotonic(), value)
-        self._data.move_to_end(key)
-        while len(self._data) > self._max:
-            self._data.popitem(last=False)
+    async def set(
+        self,
+        prompt: str,
+        model: str = "",
+        value: str = "",
+        temperature: float = 0.0,
+        max_tokens: int = 0,
+    ) -> None:
+        key = self._key(prompt, model, temperature, max_tokens)
+        async with self._lock:
+            self._data[key] = (time.monotonic(), value)
+            self._data.move_to_end(key)
+            while len(self._data) > self._max:
+                self._data.popitem(last=False)
 
-    def clear(self) -> None:
-        self._data.clear()
+    async def clear(self) -> None:
+        async with self._lock:
+            self._data.clear()
 
 
 # ── Rate Limiter ─────────────────────────────────────────────────────────────
 
 
 class RateLimiter:
-    """Sliding window rate limiter per model."""
+    """Async-safe sliding window rate limiter per model."""
 
     def __init__(self, window_seconds: int = 60, max_requests: int = 30) -> None:
         self._window = window_seconds
         self._max = max_requests
         self._timestamps: dict[str, list[float]] = {}
+        self._lock = asyncio.Lock()
 
-    def _cleanup(self, model: str) -> None:
-        now = time.monotonic()
-        ts_list = self._timestamps.get(model, [])
-        self._timestamps[model] = [t for t in ts_list if now - t < self._window]
-
-    def check(self, model: str) -> bool:
-        """Return True if request is allowed."""
-        self._cleanup(model)
-        return len(self._timestamps.get(model, [])) < self._max
-
-    def record(self, model: str) -> None:
-        self._timestamps.setdefault(model, []).append(time.monotonic())
+    async def acquire(self, model: str) -> bool:
+        """Atomically check and record. Returns True if request is allowed."""
+        async with self._lock:
+            now = time.monotonic()
+            ts_list = self._timestamps.get(model, [])
+            self._timestamps[model] = [t for t in ts_list if now - t < self._window]
+            if len(self._timestamps[model]) < self._max:
+                self._timestamps[model].append(now)
+                return True
+            return False
 
 
 # ── LLM Router ───────────────────────────────────────────────────────────────
@@ -140,11 +145,11 @@ class LLMRouter:
 
     def __init__(
         self,
-        models: list[ModelConfig] | None = None,
+        models: list[str] | None = None,
         cache_ttl: int | None = None,
         cost_tracker: CostTracker | None = None,
     ) -> None:
-        self.models = sorted(models or DEFAULT_MODELS, key=lambda m: m.priority)
+        self.models = list(models) if models else list(DEFAULT_MODELS)
         self.cache = TTLCache(
             ttl_seconds=cache_ttl or settings.cache_ttl_seconds,
             max_entries=settings.cache_max_entries,
@@ -177,7 +182,7 @@ class LLMRouter:
 
         # Check cache
         cache_key = f"<system>{system_prompt}</system>\n<user>{user_message}</user>"
-        cached = self.cache.get(cache_key, selected_model)
+        cached = await self.cache.get(cache_key, selected_model, temp, max_tok)
         if cached:
             logger.info("cache_hit", expert_id=expert.id, model=selected_model)
             return ExpertAdviceResponse(
@@ -191,7 +196,7 @@ class LLMRouter:
 
         # Try models in priority order (fallback)
         models_to_try = [selected_model] + [
-            m.model for m in self.models if m.model != selected_model
+            m for m in self.models if m != selected_model
         ]
 
         last_error: str | None = None
@@ -207,8 +212,8 @@ class LLMRouter:
                     reason=last_error,
                 )
 
-            # Check rate limit
-            if not self.rate_limiter.check(model_name):
+            # Atomically check and record rate limit
+            if not await self.rate_limiter.acquire(model_name):
                 logger.warning("rate_limited", model=model_name)
                 last_error = f"Rate limit exceeded for {model_name}"
                 continue
@@ -222,11 +227,8 @@ class LLMRouter:
                     max_tokens=max_tok,
                 )
 
-                # Record rate limit usage
-                self.rate_limiter.record(model_name)
-
                 # Cache successful result
-                self.cache.set(cache_key, model_name, result["content"])
+                await self.cache.set(cache_key, model_name, result["content"], temp, max_tok)
 
                 # Track cost
                 usage = self.cost_tracker.record(
@@ -340,30 +342,6 @@ class LLMRouter:
             "completion_tokens": completion_tokens,
             "cost": cost,
         }
-
-    def _find_api_key_var(self, model: str) -> str | None:
-        """Find the API key environment variable for a model."""
-        model_lower = model.lower()
-        for mc in self.models:
-            if mc.model.lower() == model_lower:
-                return mc.api_key_var
-        # Try litellm's provider mapping
-        import litellm
-        try:
-            provider = litellm.get_llm_provider(model)
-            if provider == "openai":
-                return "OPENAI_API_KEY"
-            elif provider == "anthropic":
-                return "ANTHROPIC_API_KEY"
-            elif "gemini" in provider:
-                return "GEMINI_API_KEY"
-            elif "deepseek" in provider:
-                return "DEEPSEEK_API_KEY"
-            elif "groq" in provider:
-                return "GROQ_API_KEY"
-        except Exception:
-            pass
-        return None
 
 
 # Module-level singleton
