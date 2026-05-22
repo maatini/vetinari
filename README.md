@@ -1,162 +1,89 @@
-# Multi-LLM Expert Advisor — MCP Server
+# Expert Advisor — Lean MCP Server
 
-> Intelligenter Multi-Expert-Advisor für MCP-fähige Agentic TUIs wie pi, DeepSeek TUI, Cursor, Claude Code.
+> Simple multi-expert MCP server for Cursor, Claude Code, and pi.  
+> 4 experts, LiteLLM routing, parallel consultation. No bloat.
 
-## Features
+## Why?
 
-- **11 Expertendomänen:** Software Architect, Code Reviewer, Python Expert, DevOps, Security Analyst, Data Engineer, ML/AI Engineer, Frontend Engineer, Rust Engineer, Debugging Specialist, Technical Product Manager
-- **5+ LLM Provider:** OpenAI (GPT-4o, GPT-4o-mini), Anthropic (Claude 3.5 Sonnet), Google (Gemini), DeepSeek, Groq — via LiteLLM
-- **Fallback & Resilienz:** Automatisches Fallback bei API-Fehlern, Retry mit Exponential Backoff
-- **Rate Limiting:** Sliding-Window pro Modell
-- **Caching:** In-Memory TTL-Cache zur Kosten- und Latenzreduktion
-- **Kosten-Tracking:** Detailliertes Usage-Tracking pro Modell, Budget-Warnungen
-- **Parallele Beratung:** Mehrere Experten gleichzeitig per `asyncio.gather`
+Instead of asking a single LLM, get **4 specialized perspectives** in parallel on system design, code quality, security, and Python — all through one MCP server.
 
 ## Quick Start
 
-### 1. Devbox-Umgebung
-
 ```bash
+# 1. Set up environment
 devbox shell
-uv sync
-```
 
-### 2. API Keys konfigurieren
+# 2. Add at least one API key
+cp .env.example .env  # Edit: OPENAI_API_KEY or ANTHROPIC_API_KEY or DEEPSEEK_API_KEY
 
-```bash
-cp .env.example .env
-# Edit .env mit deinen API Keys
-```
-
-### 3. Server testen
-
-```bash
+# 3. Start server
 devbox run server
-```
-
-### 4. Tests ausführen
-
-```bash
-devbox run test-cov
 ```
 
 ## MCP Integration
 
-In `.mcp.json` deines Projekts:
+Add to your `.mcp.json`:
 
 ```json
 {
   "mcpServers": {
-    "multi-llm-vetinari": {
+    "expert-advisor": {
       "command": "uv",
       "args": ["run", "python", "-m", "expert_advisor.server"],
-      "cwd": "/pfad/zu/multi-llm-vetinari"
+      "cwd": "/path/to/vetinary"
     }
   }
 }
 ```
 
-## Tools
+## Experts (4)
 
-### `list_experts`
-Alle verfügbaren Experten auflisten.
+| ID | Name | Description |
+|---|---|---|
+| `architect` | Software Architect | System design, architecture trade-offs |
+| `reviewer` | Code Reviewer & Debugger | Code review, debugging, root cause analysis |
+| `security` | Security Engineer | App security, threat modeling, OWASP |
+| `python` | Python Expert | Python idioms, typing, async, performance |
 
-```json
-// Input
-{ "query": "python" }  // Optional: Filter
+Compare: the previous version had 11 experts. We cut 7 domains to focus on what actually matters for daily coding work.
 
-// Output
-[
-  {
-    "id": "python-expert",
-    "name": "Python Expert",
-    "description": "Python language expert: idioms, typing, async, performance",
-    "tags": ["python", "typing", "async", "performance"],
-    "recommended_model": "gpt-4o-mini"
-  }
-]
-```
+## MCP Tools
 
-### `consult_expert`
-Einen Experten zu einem Thema befragen.
+| Tool | Description |
+|---|---|
+| `list_experts` | List/search all experts |
+| `consult_expert` | Query a single expert |
+| `consult_multiple_experts` | Query multiple experts in parallel ⚡ |
+| `get_expert_prompt` | View an expert's system prompt |
+| `cost_summary` | Minimal cost/token log |
 
-```json
-// Input
-{
-  "expert_id": "architect",
-  "query": "How to design a rate-limited API?",
-  "model": null,       // Optional: Modell auswählen
-  "temperature": 0.7
-}
+## Features
 
-// Output
-{
-  "success": true,
-  "expert_id": "architect",
-  "expert_name": "Software Architect",
-  "model_used": "gpt-4o-mini",
-  "content": "...",
-  "usage": {
-    "prompt_tokens": 500,
-    "completion_tokens": 300,
-    "total_tokens": 800,
-    "cost_usd": 0.00015
-  },
-  "fallback_used": false,
-  "retrieval_time_ms": 1200.5
-}
-```
+- **LiteLLM routing** — primary model + automatic fallback (3 models)
+- **Parallel consultation** — `asyncio.gather` across multiple experts
+- **3 models**: Claude 3.5 Sonnet, GPT-4o-mini, DeepSeek Chat
+- **Optional cache** — set `ENABLE_CACHE=true` in `.env`
+- **Minimal cost log** — `total_tokens` + `total_cost`, nothing more
 
-### `consult_multiple_experts`
-Mehrere Experten parallel befragen.
-
-```json
-// Input
-{
-  "expert_ids": ["architect", "security"],
-  "query": "Design a secure authentication system"
-}
-```
-
-### `cost_summary`
-Kumulierte Kosten-Statistiken.
-
-### `search_experts`
-Experten per Suchbegriff finden.
-
-### `get_expert_prompt`
-System-Prompt eines Experten abrufen.
-
-## Architektur
-
-```
-src/expert_advisor/
-├── config.py          # pydantic-settings Konfiguration
-├── server.py          # FastMCP Server mit Tool-Definitionen
-├── experts/
-│   ├── prompts.py     # 11 Experten mit System-Prompts
-│   └── registry.py    # Zentrale Expertensuche
-├── routers/
-│   └── llm_router.py  # LiteLLM Wrapper, Fallback, Cache, Rate Limiting
-└── utils/
-    ├── logging.py     # structlog Konfiguration
-    └── cost_tracker.py # Kosten- und Token-Tracking
-```
-
-## Development
+## Config (.env)
 
 ```bash
-# Dev-Setup
-devbox shell
-uv sync
+# At least one API key
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+DEEPSEEK_API_KEY=sk-...
 
-# Tests
-uv run pytest -q
-uv run pytest --cov=src/expert_advisor --cov-report=term-missing -q
+# Optional
+DEFAULT_MODEL=gpt-4o-mini
+ENABLE_CACHE=false
+```
 
-# Linting
-uv run ruff check src/ tests/
+## Dev
 
-# Demo
-uv run python examples/basic_usage.py
+```bash
+devbox shell             # Enter dev environment
+devbox run test          # Run tests
+devbox run test-cov      # Tests + coverage
+devbox run lint          # Ruff
+uv run python examples/basic_usage.py  # Non-LLM demo
 ```
