@@ -1,3 +1,6 @@
-"""Multi-LLM Expert Advisor MCP Server."""
+"""Multi-LLM Expert Advisor (Lean Edition) — MCP Server.
 
-__version__ = "1.0.0"
+4 experts, LiteLLM routing, parallel consultation.
+"""
+
+__version__ = "2.0.0"
