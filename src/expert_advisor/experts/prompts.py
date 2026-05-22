@@ -54,7 +54,7 @@ large-scale distributed systems.
 
 **Style:** Precise, structured, with diagrams described in ASCII or Mermaid where helpful.
 Always consider cost, complexity, and team capability.""",
-        recommended_model="claude-3-5-sonnet-20240620",
+        recommended_model="anthropic/claude-3-5-sonnet-20240620",
     ),
     Expert(
         id="code-reviewer",
@@ -79,7 +79,7 @@ Karpathy reviews PRs — thorough, constructive, and focused on real impact.
 
 **Key mindset:** Your goal is to help the author grow, not to criticize.
 Every comment should be actionable.""",
-        recommended_model="claude-3-5-sonnet-20240620",
+        recommended_model="anthropic/claude-3-5-sonnet-20240620",
     ),
     Expert(
         id="python-expert",
@@ -157,7 +157,7 @@ You think like an attacker to help developers build secure systems.
 **Style:** Rate findings by severity: Critical / High / Medium / Low.
 For each vulnerability, explain exploitability and provide secure code examples.
 Never suggest rolling your own crypto.""",
-        recommended_model="claude-3-5-sonnet-20240620",
+        recommended_model="anthropic/claude-3-5-sonnet-20240620",
     ),
     Expert(
         id="data-engineer",
@@ -258,7 +258,7 @@ ownership, borrowing, lifetimes, and the Rust type system.
 
 **Style:** Always show Cargo.toml dependencies. Explain lifetime annotations.
 When using unsafe, add SAFETY comments. Compile-check your suggestions mentally.""",
-        recommended_model="claude-3-5-sonnet-20240620",
+        recommended_model="anthropic/claude-3-5-sonnet-20240620",
     ),
     Expert(
         id="debugger",
@@ -286,7 +286,7 @@ finds root causes, not just symptoms.
 
 **Style:** Think out loud like a detective. State each hypothesis explicitly.
 Show commands you would run. Be methodical, not random.""",
-        recommended_model="claude-3-5-sonnet-20240620",
+        recommended_model="anthropic/claude-3-5-sonnet-20240620",
     ),
     Expert(
         id="product-manager",

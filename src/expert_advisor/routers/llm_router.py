@@ -55,7 +55,11 @@ DEFAULT_MODELS = [
     # Priority 0: Best/cheapest primary models
     ModelConfig(model="gpt-4o-mini", api_key_var="OPENAI_API_KEY", priority=0),
     # Priority 1: Fallback models
-    ModelConfig(model="claude-3-5-sonnet-20240620", api_key_var="ANTHROPIC_API_KEY", priority=1),
+    ModelConfig(
+        model="anthropic/claude-3-5-sonnet-20240620",
+        api_key_var="ANTHROPIC_API_KEY",
+        priority=1,
+    ),
     ModelConfig(model="gemini/gemini-2.0-flash", api_key_var="GEMINI_API_KEY", priority=1),
     ModelConfig(model="deepseek/deepseek-chat", api_key_var="DEEPSEEK_API_KEY", priority=1),
     ModelConfig(model="groq/llama3-70b-8192", api_key_var="GROQ_API_KEY", priority=2),

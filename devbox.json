@@ -7,7 +7,7 @@
     "PYTHONUNBUFFERED": "1"
   },
   "shell": {
-    "init_hook": "uv venv && uv pip install -e '.[dev]'",
+    "init_hook": "[ -d .venv ] || uv venv; uv sync --all-groups",
     "scripts": {
       "test": "uv run pytest -q",
       "test-cov": "uv run pytest --cov=src/expert_advisor --cov-report=term-missing -q",
