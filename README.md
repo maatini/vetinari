@@ -1,4 +1,17 @@
-# Expert Advisor — Lean MCP Server
+# 🧠 Expert Advisor — Lean Multi-LLM MCP Server
+
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)](https://python.org)
+[![MCP](https://img.shields.io/badge/MCP-1.0%2B-green)](https://github.com/modelcontextprotocol/python-sdk)
+[![LiteLLM](https://img.shields.io/badge/litellm-1.40%2B-orange)](https://litellm.ai)
+[![Devbox](https://img.shields.io/badge/devbox-ready-purple)](https://www.jetify.com/devbox)
+
+<!-- Build & Quality Badges -->
+[![Tests](https://img.shields.io/badge/Tests-39%20passing-success?style=for-the-badge&logo=checkmarx)](https://github.com/maatini/vetinari-neu/actions)
+[![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)](LICENSE)
+
+---
+
+![Header](assets/header.svg)
 
 > Simple multi-expert MCP server for Cursor, Claude Code, and pi.  
 > 4 experts, LiteLLM routing, parallel consultation. No bloat.
