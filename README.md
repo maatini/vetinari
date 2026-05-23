@@ -6,8 +6,8 @@
 [![Devbox](https://img.shields.io/badge/devbox-ready-purple)](https://www.jetify.com/devbox)
 
 <!-- Build & Quality Badges -->
-[![Tests](https://img.shields.io/badge/Tests-39%20tests-success?style=for-the-badge&logo=checkmarx)](https://github.com/maatini/vetinari-neu/actions)
-[![Coverage](https://img.shields.io/badge/Coverage-94%25-brightgreen?style=for-the-badge)](https://github.com/maatini/vetinari-neu/actions)
+[![Tests](https://img.shields.io/badge/Tests-39%20tests-success?style=for-the-badge&logo=checkmarx)](https://github.com/maatini/vetinari/actions)
+[![Coverage](https://img.shields.io/badge/Coverage-94%25-brightgreen?style=for-the-badge)](https://github.com/maatini/vetinari/actions)
 [![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)](LICENSE)
 
 ---
