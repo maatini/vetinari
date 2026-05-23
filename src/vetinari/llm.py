@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import random
 import time
 from dataclasses import dataclass, field
 
@@ -13,6 +14,20 @@ from vetinari.config import settings
 from vetinari.experts import Expert
 
 logger = structlog.get_logger(__name__)
+
+# ── Resilience Error Classification (Phase 1) ────────────────────────────────
+# Only these are treated as fatal for *all* models (prompt-intrinsic).
+# All other litellm errors (rate limits, auth per provider, timeouts, 5xx, conn)
+# still trigger fallback after backoff. Mixed providers make this the right default.
+try:
+    from litellm.exceptions import ContentPolicyViolationError, ContextWindowExceededError
+
+    FATAL_ERRORS: tuple[type[BaseException], ...] = (
+        ContentPolicyViolationError,
+        ContextWindowExceededError,
+    )
+except Exception:
+    FATAL_ERRORS = ()
 
 
 # ── Data Structures ──────────────────────────────────────────────────────────
@@ -40,6 +55,7 @@ class ExpertAdviceResponse:
     fallback_used: bool = False
     retrieval_time_ms: float = 0.0
     error: str | None = None
+    error_type: str | None = None
 
     @property
     def success(self) -> bool:
@@ -92,6 +108,18 @@ class SimpleCache:
             oldest = min(self._data, key=lambda k: self._data[k][0])
             del self._data[oldest]
         self._data[key] = (time.monotonic(), value)
+
+
+# ── Resilience Helpers ───────────────────────────────────────────────────────
+
+
+async def _sleep_with_backoff(attempt: int, base_delay: float) -> float:
+    """Exp backoff + jitter (capped). Returns actual delay slept (for logging)."""
+    delay = min(base_delay * (2 ** attempt), 8.0)
+    jitter = random.uniform(0, delay * 0.25)
+    total = delay + jitter
+    await asyncio.sleep(total)
+    return total
 
 
 # ── LLM Router ───────────────────────────────────────────────────────────────
@@ -148,18 +176,36 @@ class LLMRouter:
                     retrieval_time_ms=(time.monotonic() - start_time) * 1000,
                 )
 
-        # Try primary then fallback
+        # Try primary then fallback (with LiteLLM retries + smart backoff on model switch)
         models_to_try = [selected_model] + [m for m in self.models if m != selected_model]
         last_error: str | None = None
+        last_error_type: str | None = None
         fallback_used = False
+
+        max_retries = settings.llm_max_retries
+        base_delay = settings.llm_retry_base_delay_seconds
+        timeout = settings.llm_timeout_seconds
 
         for attempt, model_name in enumerate(models_to_try):
             if attempt > 0:
                 fallback_used = True
-                logger.info("fallback_attempt", from_model=selected_model, to_model=model_name)
+                logger.info(
+                    "fallback_attempt",
+                    from_model=selected_model,
+                    to_model=model_name,
+                    attempt=attempt,
+                )
 
             try:
-                result = await self._call_llm(model_name, system_prompt, user_query, temp, max_tok)
+                result = await self._call_llm(
+                    model_name,
+                    system_prompt,
+                    user_query,
+                    temp,
+                    max_tok,
+                    timeout=timeout,
+                    max_retries=max_retries,
+                )
 
                 # Cache if enabled
                 if self.cache:
@@ -177,6 +223,7 @@ class LLMRouter:
                     expert_id=expert.id,
                     model=model_name,
                     elapsed_ms=round(elapsed_ms, 1),
+                    max_retries_configured=max_retries,
                 )
 
                 return ExpertAdviceResponse(
@@ -191,11 +238,36 @@ class LLMRouter:
 
             except Exception as e:
                 last_error = str(e)
-                logger.error("llm_call_failed", model=model_name, error=last_error)
-                if attempt < len(models_to_try) - 1:
-                    await asyncio.sleep(1.0)
+                last_error_type = type(e).__name__
+                logger.error(
+                    "llm_call_failed",
+                    model=model_name,
+                    error=last_error,
+                    error_type=last_error_type,
+                    attempt=attempt,
+                    max_retries_configured=max_retries,
+                )
 
-        # All models failed
+                is_fatal = bool(FATAL_ERRORS) and isinstance(e, FATAL_ERRORS)
+                if is_fatal:
+                    # Short-circuit: no point trying other models for prompt-intrinsic fatal errors
+                    # (policy violation, context window). Prevents unnecessary cost/latency.
+                    break
+
+                if attempt < len(models_to_try) - 1:
+                    # Log exact delay from the (now observable) helper
+                    actual_delay = await _sleep_with_backoff(attempt, base_delay)
+                    next_idx = attempt + 1
+                    next_m = models_to_try[next_idx] if next_idx < len(models_to_try) else None
+                    logger.info(
+                        "model_fallback_backoff",
+                        from_model=model_name,
+                        to_model=next_m,
+                        delay_seconds=round(actual_delay, 3),
+                        attempt=attempt,
+                    )
+
+        # All models failed (or short-circuited on fatal)
         elapsed_ms = (time.monotonic() - start_time) * 1000
         logger.error("all_models_failed", expert_id=expert.id)
         return ExpertAdviceResponse(
@@ -205,6 +277,7 @@ class LLMRouter:
             content="",
             retrieval_time_ms=elapsed_ms,
             error=last_error or "All models failed",
+            error_type=last_error_type,
             fallback_used=fallback_used,
         )
 
@@ -233,8 +306,15 @@ class LLMRouter:
         user_message: str,
         temperature: float,
         max_tokens: int,
+        *,
+        timeout: float | None = None,
+        max_retries: int = 0,
     ) -> dict:
-        """Call an LLM via litellm. Returns dict with content, tokens, cost."""
+        """Call an LLM via litellm. Returns dict with content, tokens, cost.
+
+        LiteLLM's max_retries handles transient errors (rate limits, timeouts, 5xx)
+        internally with its own backoff before we fall back to another model.
+        """
         import litellm
 
         messages = [
@@ -247,6 +327,8 @@ class LLMRouter:
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
+            timeout=timeout,
+            max_retries=max_retries,
         )
 
         content = response.choices[0].message.content or ""

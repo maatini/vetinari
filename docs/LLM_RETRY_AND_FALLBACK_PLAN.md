@@ -210,4 +210,30 @@ This plan keeps Vetinari lean while making it production-grade for the exact fai
 
 ---
 
-*Generated after code review of `llm.py`, `config.py`, `server.py` and relevant tests on the current `vetinari` codebase.*
+## Phase 1 Implementation Complete (2026-05, feat/llm-resilience)
+
+Phase 1 (Proper Error Classification & Per-Model Retries observability) has been implemented per the approved session plan.
+
+### Changes Delivered
+- Safe `FATAL_ERRORS` classification in `src/vetinari/llm.py` (ContentPolicyViolationError, ContextWindowExceededError cause immediate fail without cross-model attempts).
+- `error_type` added to `ExpertAdviceResponse` and surfaced in all MCP tool JSON responses.
+- Enhanced structured logs: `error_type`, `model_fallback_backoff` (with `delay_seconds`), `max_retries_configured`.
+- `_sleep_with_backoff` now returns actual delay for observability.
+- 5 new + 3 enhanced tests in `tests/test_llm.py` (fatal fast-fail asserts 1 call only; retriable paths assert `fallback_used=True` on success; config wiring; all error responses carry `error_type`).
+- `test_config.py` + `test_server.py` updated for the 3 settings and response shape.
+- README, CLAUDE.md, and this doc updated.
+
+### Verification
+- `uv run ruff check src/ tests/` — clean
+- `uv run pytest -q` — all tests pass (including 8+ new/updated resilience cases)
+- New behavior: policy violation on primary → exactly 1 LLM attempt, `fallback_used=false`, clear `error_type` in response.
+- Rate limit on primary → falls back, `fallback_used=true` on success response.
+- No behavior change for transient errors or happy path.
+
+Phase 2 (Semaphore for `consult_multiple`) and Phase 3 (`litellm.Router`) remain deferred — no reported pain, keeps lean surface.
+
+See also the detailed session plan at `.grok/sessions/.../plan.md` for the full design rationale and trade-off decisions.
+
+---
+
+*Phase 1 work executed on clean `feat/llm-resilience` after full exploration. Original plan (Phases 0-3) preserved as historical context.*

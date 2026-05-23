@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     default_temperature: float = 0.7
     max_tokens: int = 2048
 
+    # LLM resilience (retries via LiteLLM + model fallback backoff)
+    llm_max_retries: int = 2
+    llm_retry_base_delay_seconds: float = 0.5
+    llm_timeout_seconds: float | None = 90.0
+
     # Optional cache (off by default)
     cache_ttl_seconds: int = 300
     cache_max_entries: int = 500

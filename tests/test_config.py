@@ -18,6 +18,10 @@ class TestSettings:
         assert settings.cache_ttl_seconds == 300
         assert settings.cache_max_entries == 500
         assert settings.enable_cache is False
+        # LLM resilience (Phase 1)
+        assert settings.llm_max_retries == 2
+        assert settings.llm_retry_base_delay_seconds == 0.5
+        assert settings.llm_timeout_seconds == 90.0
 
     def test_api_keys_default_none(self) -> None:
         assert settings.openai_api_key is None
@@ -27,9 +31,15 @@ class TestSettings:
     def test_env_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("LOG_LEVEL", "DEBUG")
         monkeypatch.setenv("DEFAULT_MODEL", "gpt-4o")
+        monkeypatch.setenv("LLM_MAX_RETRIES", "5")
+        monkeypatch.setenv("LLM_RETRY_BASE_DELAY_SECONDS", "1.5")
+        monkeypatch.setenv("LLM_TIMEOUT_SECONDS", "30")
         s = Settings()
         assert s.log_level == "DEBUG"
         assert s.default_model == "gpt-4o"
+        assert s.llm_max_retries == 5
+        assert s.llm_retry_base_delay_seconds == 1.5
+        assert s.llm_timeout_seconds == 30.0
 
     def test_extra_fields_ignored(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("UNKNOWN_FIELD", "value")

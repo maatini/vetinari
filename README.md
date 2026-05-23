@@ -6,7 +6,7 @@
 [![Devbox](https://img.shields.io/badge/devbox-ready-purple)](https://www.jetify.com/devbox)
 
 <!-- Build & Quality Badges -->
-[![Tests](https://img.shields.io/badge/Tests-39%20tests-success?style=for-the-badge&logo=checkmarx)](https://github.com/maatini/vetinari/actions)
+[![Tests](https://img.shields.io/badge/Tests-43%20tests-success?style=for-the-badge&logo=checkmarx)](https://github.com/maatini/vetinari/actions)
 [![Coverage](https://img.shields.io/badge/Coverage-94%25-brightgreen?style=for-the-badge)](https://github.com/maatini/vetinari/actions)
 [![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)](LICENSE)
 
@@ -70,7 +70,8 @@ Add to your `.mcp.json`:
 
 ## Features
 
-- **Smart fallback routing** — tries your preferred model first, then falls back to the next available (Claude 3.5 Sonnet → GPT-4o-mini → DeepSeek)
+- **Resilient LLM calls** — LiteLLM automatically retries on rate limits, timeouts and transient errors. Cross-model fallback with exponential backoff + jitter. Fatal errors (content policy violations, context window exceeded) fail fast without unnecessary fallback attempts.
+- **Smart model routing** — Tries your preferred model first, then falls back to the next available (Claude 3.5 Sonnet → GPT-4o-mini → DeepSeek).
 - **Parallel consultation** — `consult_multiple_experts` queries several experts at the same time using `asyncio.gather`
 - **Optional response cache** — enable with `ENABLE_CACHE=true` (in-memory, per-process)
 - **Usage tracking** — every response includes token counts and estimated `cost_usd` for the call
@@ -90,6 +91,11 @@ DEFAULT_MODEL=gpt-4o-mini
 DEFAULT_TEMPERATURE=0.7
 MAX_TOKENS=2048
 ENABLE_CACHE=false
+
+# LLM Resilience (optional)
+LLM_MAX_RETRIES=2
+LLM_RETRY_BASE_DELAY_SECONDS=0.5
+LLM_TIMEOUT_SECONDS=90
 ```
 
 ## Dev

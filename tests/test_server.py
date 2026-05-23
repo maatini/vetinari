@@ -26,6 +26,7 @@ async def test_consult_expert_success():
     mock_resp.fallback_used = False
     mock_resp.retrieval_time_ms = 123.4
     mock_resp.error = None
+    mock_resp.error_type = None
 
     with patch.object(router, "consult", new_callable=AsyncMock) as mock_consult:
         mock_consult.return_value = mock_resp
@@ -68,6 +69,7 @@ async def test_consult_multiple_experts():
         resp.fallback_used = False
         resp.retrieval_time_ms = 50.0
         resp.error = None
+        resp.error_type = None
         return resp
 
     mock_responses = [

@@ -6,6 +6,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+# For error classification tests (Phase 1)
+from litellm.exceptions import ContentPolicyViolationError, RateLimitError
+
 from vetinari.experts import Expert
 from vetinari.llm import (
     ExpertAdviceResponse,
@@ -96,6 +99,7 @@ class TestExpertAdviceResponse:
         )
         assert resp.success is False
         assert resp.error == "Something went wrong"
+        assert resp.error_type is None  # can be set by router on real errors
 
 
 # ── LLMRouter.consult ────────────────────────────────────────────────────────
@@ -178,8 +182,15 @@ class TestLLMRouterConsult:
 
         assert response.success is False
         assert response.error is not None
-        # Tried all 3 default models
+        # Tried all 3 default models (generic Exception is not fatal)
         assert call_count[0] == 3
+        assert response.fallback_used is True  # Phase 1: we did switch models
+        assert response.error_type == "Exception"
+
+        # Phase 0: Verify LiteLLM resilience parameters are passed
+        first_call = mock_ac.call_args_list[0].kwargs
+        assert "max_retries" in first_call
+        assert "timeout" in first_call
 
     @pytest.mark.asyncio
     async def test_consult_all_models_fail(self, expert: Expert) -> None:
@@ -194,6 +205,114 @@ class TestLLMRouterConsult:
 
         assert response.success is False
         assert response.error is not None
+        assert response.error_type == "Exception"
+
+    @pytest.mark.asyncio
+    async def test_fatal_error_fails_fast_no_fallback(self, expert: Expert) -> None:
+        """Fatal errors must short-circuit (no fallback to other models) - Phase 1."""
+        router = LLMRouter()
+        call_count = [0]
+
+        async def mock_fatal(**kwargs):
+            call_count[0] += 1
+            # Realistic constructor for litellm 1.x
+            raise ContentPolicyViolationError(
+                "Content policy violation",
+                llm_provider="openai",
+                model="gpt-4o-mini",
+            )
+
+        with (
+            patch("litellm.acompletion", new_callable=AsyncMock) as mock_ac,
+            patch("litellm.completion_cost", return_value=0.0),
+        ):
+            mock_ac.side_effect = mock_fatal
+            response = await router.consult(expert, "Test query")
+
+        assert response.success is False
+        assert response.error_type == "ContentPolicyViolationError"
+        assert response.fallback_used is False  # critical: no model switch
+        assert call_count[0] == 1  # did NOT try the other 2 models
+
+    @pytest.mark.asyncio
+    async def test_retriable_error_triggers_fallback_and_success(self, expert: Expert) -> None:
+        """Rate limit on primary -> fallback succeeds with fallback_used=True."""
+        router = LLMRouter()
+        call_count = [0]
+
+        async def mock_rate_then_ok(**kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise RateLimitError(
+                    "Rate limit",
+                    llm_provider="anthropic",
+                    model="claude-3-5-sonnet-20241022",
+                )
+            # second model succeeds
+            mock_resp = MagicMock()
+            mock_resp.choices = [MagicMock()]
+            mock_resp.choices[0].message.content = "Fallback response"
+            mock_resp.usage = MagicMock()
+            mock_resp.usage.prompt_tokens = 5
+            mock_resp.usage.completion_tokens = 3
+            return mock_resp
+
+        with (
+            patch("litellm.acompletion", new_callable=AsyncMock) as mock_ac,
+            patch("litellm.completion_cost", return_value=0.0),
+        ):
+            mock_ac.side_effect = mock_rate_then_ok
+            response = await router.consult(expert, "Test")
+
+        assert response.success is True
+        assert response.content == "Fallback response"
+        assert response.fallback_used is True
+        assert response.error_type is None  # success path
+        assert call_count[0] == 2  # primary + 1 fallback
+
+    @pytest.mark.asyncio
+    async def test_fallback_used_true_on_success_from_secondary(self, expert: Expert) -> None:
+        """Primary retriable fail -> secondary success: fallback_used + correct model."""
+        router = LLMRouter()
+
+        async def side(**kwargs):
+            # Fail only first model, succeed on others
+            model = kwargs.get("model", "")
+            if "claude" in model or model == expert.recommended_model:
+                raise RateLimitError("429", llm_provider="anthropic", model=model)
+            mock_resp = MagicMock()
+            mock_resp.choices = [MagicMock()]
+            mock_resp.choices[0].message.content = f"ok-from-{model}"
+            mock_resp.usage = MagicMock()
+            return mock_resp
+
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_ac, \
+             patch("litellm.completion_cost", return_value=0.0):
+            mock_ac.side_effect = side
+            resp = await router.consult(expert, "Q")
+
+        assert resp.success is True
+        assert resp.fallback_used is True
+        assert resp.model_used != expert.recommended_model  # used a fallback model
+
+    @pytest.mark.asyncio
+    async def test_resilience_settings_are_passed_to_litellm(self, expert: Expert) -> None:
+        """max_retries and timeout from settings are forwarded to every litellm call (Phase 0+1)."""
+        router = LLMRouter()
+
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_ac:
+            mock_resp = MagicMock()
+            mock_resp.choices = [MagicMock()]
+            mock_resp.choices[0].message.content = "ok"
+            mock_resp.usage = MagicMock()
+            mock_ac.return_value = mock_resp
+            with patch("litellm.completion_cost", return_value=0.0):
+                await router.consult(expert, "Q")
+
+        called = mock_ac.call_args_list[0].kwargs
+        assert "max_retries" in called
+        assert "timeout" in called
+        # Concrete values tested via config + the Phase-0 fallback test; here we verify wiring.
 
 
 # ── LLMRouter.consult_multiple ───────────────────────────────────────────────
