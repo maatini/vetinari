@@ -7,7 +7,7 @@ MCP server: 4 expert advisors via LLMs. LiteLLM routing, FastMCP, parallel consu
 - `devbox run test` — run tests
 - `devbox run test-cov` — tests with coverage
 - `devbox run server` — start MCP server
-- `devbox run demo` — run usage examples
+- (demo script removed — use MCP tools or `devbox run server`)
 - `uv run ruff check src/ tests/` — lint
 
 ## Key files
@@ -15,13 +15,13 @@ MCP server: 4 expert advisors via LLMs. LiteLLM routing, FastMCP, parallel consu
 - `src/expert_advisor/llm.py` — LiteLLM wrapper (fallback, optional cache, cost log)
 - `src/expert_advisor/experts.py` — 4 experts + registry
 - `src/expert_advisor/config.py` — pydantic-settings config
-- `tests/` — 51 tests
+- `tests/` — 49 tests (lean, deduplicated into test_llm.py + test_server etc.)
 
 ## Architecture
 ```
 MCP Client → FastMCP Server → ExpertRegistry (4 experts)
                             → LLMRouter (LiteLLM → 3 models)
-                              → SimpleCache (opt-in), CostLog
+                              → SimpleCache (opt-in)
 ```
 
 ## Expert IDs
@@ -31,7 +31,6 @@ architect reviewer security python
 - `list_experts` — list/search experts
 - `consult_expert` — query single expert
 - `consult_multiple_experts` — parallel expert queries
-- `cost_summary` — cumulative cost/token log
 - `get_expert_prompt` — view system prompt
 
 ## Config

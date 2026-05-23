@@ -36,17 +36,6 @@ Add to your `.mcp.json`:
 }
 ```
 
-## Experts (4)
-
-| ID | Name | Description |
-|---|---|---|
-| `architect` | Software Architect | System design, architecture trade-offs |
-| `reviewer` | Code Reviewer & Debugger | Code review, debugging, root cause analysis |
-| `security` | Security Engineer | App security, threat modeling, OWASP |
-| `python` | Python Expert | Python idioms, typing, async, performance |
-
-Compare: the previous version had 11 experts. We cut 7 domains to focus on what actually matters for daily coding work.
-
 ## MCP Tools
 
 | Tool | Description |
@@ -55,7 +44,6 @@ Compare: the previous version had 11 experts. We cut 7 domains to focus on what 
 | `consult_expert` | Query a single expert |
 | `consult_multiple_experts` | Query multiple experts in parallel ⚡ |
 | `get_expert_prompt` | View an expert's system prompt |
-| `cost_summary` | Minimal cost/token log |
 
 ## Features
 
@@ -85,5 +73,4 @@ devbox shell             # Enter dev environment
 devbox run test          # Run tests
 devbox run test-cov      # Tests + coverage
 devbox run lint          # Ruff
-uv run python examples/basic_usage.py  # Non-LLM demo
 ```

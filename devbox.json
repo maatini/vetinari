@@ -12,7 +12,6 @@
       "test": "uv run pytest -q",
       "test-cov": "uv run pytest --cov=src/expert_advisor --cov-report=term-missing -q",
       "server": "uv run python -m expert_advisor.server",
-      "demo": "uv run python examples/basic_usage.py",
       "lint": "uv run ruff check src/ tests/"
     }
   }
