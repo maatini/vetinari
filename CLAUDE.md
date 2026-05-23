@@ -11,11 +11,11 @@ MCP server: 4 expert advisors via LLMs. LiteLLM routing, FastMCP, parallel consu
 - `uv run ruff check src/ tests/` — lint
 
 ## Key files
-- `src/expert_advisor/server.py` — FastMCP server with 5 tools
-- `src/expert_advisor/llm.py` — LiteLLM wrapper (fallback, optional cache, cost log)
+- `src/expert_advisor/server.py` — FastMCP server with 4 tools
+- `src/expert_advisor/llm.py` — LiteLLM wrapper (fallback, optional cache)
 - `src/expert_advisor/experts.py` — 4 experts + registry
 - `src/expert_advisor/config.py` — pydantic-settings config
-- `tests/` — 49 tests (lean, deduplicated into test_llm.py + test_server etc.)
+- `tests/` — 39 tests (lean, consolidated into test_llm.py + focused server tests)
 
 ## Architecture
 ```

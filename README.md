@@ -45,13 +45,23 @@ Add to your `.mcp.json`:
 | `consult_multiple_experts` | Query multiple experts in parallel ⚡ |
 | `get_expert_prompt` | View an expert's system prompt |
 
+## Experts
+
+| ID | Focus |
+|---|---|
+| `architect` | System design, trade-offs, scalability |
+| `reviewer` | Code review, debugging, quality & best practices |
+| `security` | Threat modeling, OWASP, secure coding |
+| `python` | Modern Python, typing, performance, idioms |
+
 ## Features
 
-- **LiteLLM routing** — primary model + automatic fallback (3 models)
-- **Parallel consultation** — `asyncio.gather` across multiple experts
-- **3 models**: Claude 3.5 Sonnet, GPT-4o-mini, DeepSeek Chat
-- **Optional cache** — set `ENABLE_CACHE=true` in `.env`
-- **Minimal cost log** — `total_tokens` + `total_cost`, nothing more
+- **Smart fallback routing** — tries your preferred model first, then falls back to the next available (Claude 3.5 Sonnet → GPT-4o-mini → DeepSeek)
+- **Parallel consultation** — `consult_multiple_experts` queries several experts at the same time using `asyncio.gather`
+- **Optional response cache** — enable with `ENABLE_CACHE=true` (in-memory, per-process)
+- **Usage tracking** — every response includes token counts and estimated `cost_usd` for the call
+
+The three models are chosen for a good balance of quality, speed, and cost.
 
 ## Config (.env)
 
@@ -63,6 +73,8 @@ DEEPSEEK_API_KEY=sk-...
 
 # Optional
 DEFAULT_MODEL=gpt-4o-mini
+DEFAULT_TEMPERATURE=0.7
+MAX_TOKENS=2048
 ENABLE_CACHE=false
 ```
 

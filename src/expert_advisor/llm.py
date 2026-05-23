@@ -105,7 +105,7 @@ DEFAULT_MODELS = [
 
 
 class LLMRouter:
-    """Simple LLM router: primary model → fallback, optional cache, cost log."""
+    """Simple LLM router: primary model → fallback, optional cache."""
 
     def __init__(
         self,
