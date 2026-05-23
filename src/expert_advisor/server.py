@@ -1,28 +1,44 @@
-"""MCP Server — Multi-Expert Advisor (Lean Edition).
+"""MCP Server — Multi-Expert Advisor.
 
 Tools:
 - list_experts: List/search experts
 - consult_expert: Get advice from a single expert
 - consult_multiple_experts: Parallel expert queries (killer feature)
 - get_expert_prompt: View system prompt
-- cost_summary: Minimal cost/token log
 """
 
 from __future__ import annotations
 
 import json
+import logging
+import sys
 from typing import Any
 
+import structlog
 from mcp.server.fastmcp import FastMCP
 
 from expert_advisor.config import settings
 from expert_advisor.experts import registry
 from expert_advisor.llm import ExpertAdviceResponse, LLMRouter
-from expert_advisor.utils.logging import configure_logging
 
 # ── Initialization ───────────────────────────────────────────────────────────
 
-configure_logging(settings.log_level)
+# Minimal structlog setup (inlined from previous utils/logging.py for leanness)
+structlog.configure(
+    processors=[
+        structlog.stdlib.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.dev.ConsoleRenderer()
+        if sys.stderr.isatty()
+        else structlog.processors.JSONRenderer(),
+    ],
+    context_class=dict,
+    logger_factory=structlog.stdlib.LoggerFactory(),
+    wrapper_class=structlog.stdlib.BoundLogger,
+    cache_logger_on_first_use=True,
+)
+logging.basicConfig(format="%(message)s", stream=sys.stderr, level=settings.log_level)
+
 mcp = FastMCP("Expert Advisor (Lean)")
 router = LLMRouter(enable_cache=settings.enable_cache)
 
@@ -146,15 +162,6 @@ async def consult_multiple_experts(
         "responses": [_format_response(r) for r in responses],
         "unknown_ids": unknown,
     }, indent=2)
-
-
-@mcp.tool(
-    name="cost_summary",
-    description="Get cumulative cost and token usage statistics.",
-)
-async def cost_summary() -> str:
-    """Return cost tracking summary."""
-    return json.dumps({"summary": router.cost_log.summary}, indent=2)
 
 
 @mcp.tool(

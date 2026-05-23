@@ -1,4 +1,4 @@
-"""Multi-LLM Expert Advisor (Lean Edition) — MCP Server.
+"""Multi-LLM Expert Advisor — MCP Server.
 
 4 experts, LiteLLM routing, parallel consultation.
 """

@@ -94,44 +94,6 @@ class SimpleCache:
         self._data[key] = (time.monotonic(), value)
 
 
-# ── Simple Cost Log ──────────────────────────────────────────────────────────
-
-
-@dataclass
-class CostLog:
-    """Minimal cumulative cost/token log."""
-
-    total_tokens: int = 0
-    total_cost: float = 0.0
-    total_calls: int = 0
-    successful_calls: int = 0
-
-    def record(
-        self,
-        prompt_tokens: int = 0,
-        completion_tokens: int = 0,
-        cost: float = 0.0,
-        success: bool = True,
-    ) -> UsageInfo:
-        self.total_calls += 1
-        if success:
-            self.successful_calls += 1
-            self.total_tokens += prompt_tokens + completion_tokens
-            self.total_cost += cost
-        return UsageInfo(
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            cost_usd=cost,
-        )
-
-    @property
-    def summary(self) -> str:
-        return (
-            f"calls={self.total_calls} success={self.successful_calls} "
-            f"tokens={self.total_tokens} cost=${self.total_cost:.6f}"
-        )
-
-
 # ── LLM Router ───────────────────────────────────────────────────────────────
 
 
@@ -155,7 +117,6 @@ class LLMRouter:
             ttl_seconds=settings.cache_ttl_seconds,
             max_entries=settings.cache_max_entries,
         ) if enable_cache else None
-        self.cost_log = CostLog()
 
     async def consult(
         self,
@@ -204,11 +165,10 @@ class LLMRouter:
                 if self.cache:
                     self.cache.set(cache_key, model_name, result["content"], temp, max_tok)
 
-                # Log cost
-                usage = self.cost_log.record(
+                usage = UsageInfo(
                     prompt_tokens=result.get("prompt_tokens", 0),
                     completion_tokens=result.get("completion_tokens", 0),
-                    cost=result.get("cost", 0.0),
+                    cost_usd=result.get("cost", 0.0),
                 )
 
                 elapsed_ms = (time.monotonic() - start_time) * 1000
@@ -237,7 +197,6 @@ class LLMRouter:
 
         # All models failed
         elapsed_ms = (time.monotonic() - start_time) * 1000
-        self.cost_log.record(success=False)
         logger.error("all_models_failed", expert_id=expert.id)
         return ExpertAdviceResponse(
             expert_id=expert.id,
