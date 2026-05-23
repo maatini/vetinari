@@ -13,8 +13,8 @@ import pytest
 @pytest.mark.asyncio
 async def test_consult_expert_success():
     """consult_expert should return advice from the expert."""
-    from expert_advisor.llm import UsageInfo
-    from expert_advisor.server import consult_expert, router
+    from vetinari.llm import UsageInfo
+    from vetinari.server import consult_expert, router
 
     mock_resp = AsyncMock()
     mock_resp.success = True
@@ -40,7 +40,7 @@ async def test_consult_expert_success():
 @pytest.mark.asyncio
 async def test_consult_expert_unknown():
     """consult_expert should return error for unknown expert ID."""
-    from expert_advisor.server import consult_expert
+    from vetinari.server import consult_expert
 
     result_json = await consult_expert(expert_id="nonexistent", query="Hello")
     result = json.loads(result_json)
@@ -54,8 +54,8 @@ async def test_consult_expert_unknown():
 @pytest.mark.asyncio
 async def test_consult_multiple_experts():
     """consult_multiple_experts should query multiple experts."""
-    from expert_advisor.llm import UsageInfo
-    from expert_advisor.server import consult_multiple_experts, router
+    from vetinari.llm import UsageInfo
+    from vetinari.server import consult_multiple_experts, router
 
     def make_resp(eid, name):
         resp = AsyncMock()
@@ -92,7 +92,7 @@ async def test_consult_multiple_experts():
 @pytest.mark.asyncio
 async def test_consult_multiple_with_unknown_ids():
     """consult_multiple_experts should report unknown IDs."""
-    from expert_advisor.server import consult_multiple_experts
+    from vetinari.server import consult_multiple_experts
 
     result_json = await consult_multiple_experts(
         expert_ids=["nonexistent1", "nonexistent2"],

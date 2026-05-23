@@ -10,8 +10,8 @@
     "init_hook": "[ -d .venv ] || uv venv; uv sync --all-groups",
     "scripts": {
       "test": "uv run pytest -q",
-      "test-cov": "uv run pytest --cov=src/expert_advisor --cov-report=term-missing -q",
-      "server": "uv run python -m expert_advisor.server",
+      "test-cov": "uv run pytest --cov=src/vetinari --cov-report=term-missing -q",
+      "server": "uv run python -m vetinari.server",
       "lint": "uv run ruff check src/ tests/"
     }
   }

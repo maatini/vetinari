@@ -1,4 +1,4 @@
-# Expert Advisor — pi context
+# Vetinari — pi context
 
 ## Project
 MCP server: 4 expert advisors via LLMs. LiteLLM routing, FastMCP, parallel consultation.
@@ -11,10 +11,10 @@ MCP server: 4 expert advisors via LLMs. LiteLLM routing, FastMCP, parallel consu
 - `uv run ruff check src/ tests/` — lint
 
 ## Key files
-- `src/expert_advisor/server.py` — FastMCP server with 4 tools
-- `src/expert_advisor/llm.py` — LiteLLM wrapper (fallback, optional cache)
-- `src/expert_advisor/experts.py` — 4 experts + registry
-- `src/expert_advisor/config.py` — pydantic-settings config
+- `src/vetinari/server.py` — FastMCP server with 4 tools
+- `src/vetinari/llm.py` — LiteLLM wrapper (fallback, optional cache)
+- `src/vetinari/experts.py` — 4 experts + registry
+- `src/vetinari/config.py` — pydantic-settings config
 - `tests/` — 39 tests (lean, consolidated into test_llm.py + focused server tests)
 
 ## Architecture

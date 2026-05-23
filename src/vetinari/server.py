@@ -1,4 +1,4 @@
-"""MCP Server — Multi-Expert Advisor.
+"""Vetinari — Multi-LLM Expert Advisor MCP Server.
 
 Tools:
 - list_experts: List/search experts
@@ -17,9 +17,9 @@ from typing import Any
 import structlog
 from mcp.server.fastmcp import FastMCP
 
-from expert_advisor.config import settings
-from expert_advisor.experts import registry
-from expert_advisor.llm import ExpertAdviceResponse, LLMRouter
+from vetinari.config import settings
+from vetinari.experts import registry
+from vetinari.llm import ExpertAdviceResponse, LLMRouter
 
 # ── Initialization ───────────────────────────────────────────────────────────
 
@@ -39,7 +39,7 @@ structlog.configure(
 )
 logging.basicConfig(format="%(message)s", stream=sys.stderr, level=settings.log_level)
 
-mcp = FastMCP("Expert Advisor (Lean)")
+mcp = FastMCP("Vetinari")
 router = LLMRouter(enable_cache=settings.enable_cache)
 
 

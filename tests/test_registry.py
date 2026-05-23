@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from expert_advisor.experts import Expert, ExpertRegistry, registry
+from vetinari.experts import Expert, ExpertRegistry, registry
 
 
 class TestRegistry:

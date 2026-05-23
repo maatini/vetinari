@@ -9,8 +9,8 @@ from dataclasses import dataclass, field
 
 import structlog
 
-from expert_advisor.config import settings
-from expert_advisor.experts import Expert
+from vetinari.config import settings
+from vetinari.experts import Expert
 
 logger = structlog.get_logger(__name__)
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from expert_advisor.llm import LLMRouter
+from vetinari.llm import LLMRouter
 
 
 @pytest.fixture

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from expert_advisor.config import Settings, settings
+from vetinari.config import Settings, settings
 
 
 class TestSettings:

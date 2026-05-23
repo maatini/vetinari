@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from expert_advisor.experts import Expert
-from expert_advisor.llm import (
+from vetinari.experts import Expert
+from vetinari.llm import (
     ExpertAdviceResponse,
     LLMRouter,
     SimpleCache,

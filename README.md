@@ -1,4 +1,4 @@
-# 🧠 Expert Advisor — Lean Multi-LLM MCP Server
+# 🧠 Vetinari — Multi-LLM Expert Advisor MCP Server
 
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)](https://python.org)
 [![MCP](https://img.shields.io/badge/MCP-1.0%2B-green)](https://github.com/modelcontextprotocol/python-sdk)
@@ -40,10 +40,10 @@ Add to your `.mcp.json`:
 ```json
 {
   "mcpServers": {
-    "expert-advisor": {
+    "vetinari": {
       "command": "uv",
-      "args": ["run", "python", "-m", "expert_advisor.server"],
-      "cwd": "/path/to/vetinary"
+      "args": ["run", "python", "-m", "vetinari.server"],
+      "cwd": "/path/to/vetinari"
     }
   }
 }
