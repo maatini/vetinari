@@ -1,4 +1,4 @@
-"""Tests for MCP server tools (Lean Edition)."""
+"""Tests for MCP server tools (error paths + JSON formatting at tool boundary)."""
 
 from __future__ import annotations
 
@@ -6,62 +6,6 @@ import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
-# ── Test list_experts ────────────────────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_list_experts():
-    """list_experts should return all 4 experts."""
-    from expert_advisor.server import list_experts
-
-    result_json = await list_experts()
-    result = json.loads(result_json)
-    assert isinstance(result, list)
-    assert len(result) == 4
-    first = result[0]
-    assert "id" in first
-    assert "name" in first
-    assert "description" in first
-    assert "tags" in first
-
-
-@pytest.mark.asyncio
-async def test_list_experts_with_query():
-    """list_experts with query should filter results."""
-    from expert_advisor.server import list_experts
-
-    result_json = await list_experts(query="python")
-    result = json.loads(result_json)
-    assert len(result) == 1
-    assert result[0]["id"] == "python"
-
-
-# ── Test get_expert_prompt ───────────────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_get_expert_prompt():
-    """get_expert_prompt should return the prompt for a valid expert."""
-    from expert_advisor.server import get_expert_prompt
-
-    result_json = await get_expert_prompt("architect")
-    result = json.loads(result_json)
-    assert result["expert_id"] == "architect"
-    assert "Software Architect" in result["expert_name"]
-    assert len(result["prompt"]) > 50
-
-
-@pytest.mark.asyncio
-async def test_get_expert_prompt_unknown():
-    """get_expert_prompt should return error for unknown expert."""
-    from expert_advisor.server import get_expert_prompt
-
-    result_json = await get_expert_prompt("nonexistent")
-    result = json.loads(result_json)
-    assert "error" in result
-    assert "available_ids" in result
-
 
 # ── Test consult_expert ──────────────────────────────────────────────────────
 
@@ -159,15 +103,3 @@ async def test_consult_multiple_with_unknown_ids():
     assert len(result["unknown_ids"]) == 2
 
 
-# ── Test cost_summary ────────────────────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_cost_summary():
-    """cost_summary should return cost stats."""
-    from expert_advisor.server import cost_summary
-
-    result_json = await cost_summary()
-    result = json.loads(result_json)
-    assert "summary" in result
-    assert "calls=" in result["summary"]

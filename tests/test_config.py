@@ -1,4 +1,4 @@
-"""Tests for config module (Lean Edition)."""
+"""Tests for config module (lean)."""
 
 from __future__ import annotations
 

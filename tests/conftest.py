@@ -4,13 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from expert_advisor.llm import CostLog, LLMRouter
-
-
-@pytest.fixture
-def cost_log() -> CostLog:
-    """Fresh cost log for each test."""
-    return CostLog()
+from expert_advisor.llm import LLMRouter
 
 
 @pytest.fixture

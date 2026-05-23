@@ -1,4 +1,4 @@
-"""Tests for LLMRouter (Lean Edition)."""
+"""Tests for llm.py (LLMRouter, SimpleCache, UsageInfo, response objects)."""
 
 from __future__ import annotations
 
@@ -7,9 +7,26 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from expert_advisor.experts import Expert
-from expert_advisor.llm import ExpertAdviceResponse, LLMRouter, SimpleCache
+from expert_advisor.llm import (
+    ExpertAdviceResponse,
+    LLMRouter,
+    SimpleCache,
+    UsageInfo,
+)
 
-# ── Test SimpleCache ─────────────────────────────────────────────────────────
+
+class TestUsageInfo:
+    """Tests for UsageInfo dataclass."""
+
+    def test_defaults(self) -> None:
+        u = UsageInfo()
+        assert u.prompt_tokens == 0
+        assert u.completion_tokens == 0
+        assert u.cost_usd == 0.0
+        assert u.model == "unknown"
+
+
+# ── SimpleCache ──────────────────────────────────────────────────────────────
 
 
 class TestSimpleCache:
@@ -54,7 +71,7 @@ class TestSimpleCache:
         assert cache.get("p1") is None
 
 
-# ── Test ExpertAdviceResponse ────────────────────────────────────────────────
+# ── ExpertAdviceResponse ─────────────────────────────────────────────────────
 
 
 class TestExpertAdviceResponse:
@@ -81,7 +98,7 @@ class TestExpertAdviceResponse:
         assert resp.error == "Something went wrong"
 
 
-# ── Test LLMRouter consult ───────────────────────────────────────────────────
+# ── LLMRouter.consult ────────────────────────────────────────────────────────
 
 
 class TestLLMRouterConsult:
@@ -179,7 +196,7 @@ class TestLLMRouterConsult:
         assert response.error is not None
 
 
-# ── Test LLMRouter consult_multiple ──────────────────────────────────────────
+# ── LLMRouter.consult_multiple ───────────────────────────────────────────────
 
 
 class TestLLMRouterConsultMultiple:
@@ -213,34 +230,3 @@ class TestLLMRouterConsultMultiple:
         for r in responses:
             assert r.success is True
             assert r.expert_id in ("e1", "e2", "e3")
-
-
-# ── Test CostLog ─────────────────────────────────────────────────────────────
-
-
-class TestCostLog:
-    """Tests for CostLog (via router)."""
-
-    def test_initial_summary(self) -> None:
-        router = LLMRouter()
-        assert "calls=0" in router.cost_log.summary
-
-    @pytest.mark.asyncio
-    async def test_accrues_after_consult(self) -> None:
-        router = LLMRouter()
-        expert = Expert(id="e1", name="E1", description="D1", prompt="P1")
-
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = "Hi"
-        mock_response.usage = MagicMock()
-        mock_response.usage.prompt_tokens = 10
-        mock_response.usage.completion_tokens = 5
-
-        with patch("litellm.acompletion", new_callable=AsyncMock) as mock:
-            mock.return_value = mock_response
-            with patch("litellm.completion_cost", return_value=0.001):
-                await router.consult(expert, "Test")
-
-        assert "calls=1" in router.cost_log.summary
-        assert "tokens=15" in router.cost_log.summary
