@@ -11,6 +11,9 @@ dependencies = [
     "structlog>=24.0",
 ]
 
+[project.scripts]
+vetinari = "vetinari.server:main"
+
 [dependency-groups]
 dev = [
     "pytest>=8.0",

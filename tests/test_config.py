@@ -143,7 +143,7 @@ class TestModelKeyRouting:
             deepseek_api_key=None,
         )
         assert model_has_api_key("gpt-4o-mini", s) is True
-        assert model_has_api_key("anthropic/claude-3-5-sonnet-20241022", s) is False
+        assert model_has_api_key("anthropic/claude-sonnet-4-6", s) is False
 
     def test_prioritize_models_by_keys(self) -> None:
         s = self._isolated_settings(
@@ -154,4 +154,4 @@ class TestModelKeyRouting:
         ordered = prioritize_models_by_keys(DEFAULT_FALLBACK_MODELS, s)
         assert ordered[0] == "gpt-4o-mini"
         assert ordered[1] == "deepseek/deepseek-chat"
-        assert ordered[2] == "anthropic/claude-3-5-sonnet-20241022"
+        assert ordered[2] == "anthropic/claude-sonnet-4-6"

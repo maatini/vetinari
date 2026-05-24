@@ -155,7 +155,7 @@ class TestSelectPrimaryModel:
             deepseek_api_key="sk-d",
         )
         assert _select_primary_model(expert, None, cfg=cfg) == (
-            "anthropic/claude-3-5-sonnet-20241022"
+            "anthropic/claude-sonnet-4-6"
         )
 
     def test_explicit_model_wins(self) -> None:
@@ -168,7 +168,7 @@ class TestSelectPrimaryModel:
             name="E",
             description="D",
             prompt="P",
-            recommended_model="anthropic/claude-3-5-sonnet-20241022",
+            recommended_model="anthropic/claude-sonnet-4-6",
         )
         cfg = self._openai_only_settings()
         assert _select_primary_model(expert, None, cfg=cfg) == "gpt-4o-mini"
@@ -319,7 +319,7 @@ class TestLLMRouterConsult:
                 raise RateLimitError(
                     "Rate limit",
                     llm_provider="anthropic",
-                    model="claude-3-5-sonnet-20241022",
+                    model="claude-sonnet-4-6",
                 )
             # second model succeeds
             mock_resp = MagicMock()

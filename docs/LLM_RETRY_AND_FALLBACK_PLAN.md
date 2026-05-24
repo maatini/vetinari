@@ -23,7 +23,7 @@ LLM_MAX_RETRIES=2
 LLM_RETRY_BASE_DELAY_SECONDS=0.5
 LLM_TIMEOUT_SECONDS=90
 LLM_MAX_CONCURRENT=4
-FALLBACK_MODELS=anthropic/claude-3-5-sonnet-20241022,gpt-4o-mini,deepseek/deepseek-chat
+FALLBACK_MODELS=anthropic/claude-sonnet-4-6,gpt-4o-mini,deepseek/deepseek-chat
 ```
 
 ## Deferred (no reported pain)

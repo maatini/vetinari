@@ -12,7 +12,7 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 logger = structlog.get_logger(__name__)
 
 DEFAULT_FALLBACK_MODELS = [
-    "anthropic/claude-3-5-sonnet-20241022",
+    "anthropic/claude-sonnet-4-6",
     "gpt-4o-mini",
     "deepseek/deepseek-chat",
 ]
