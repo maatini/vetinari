@@ -73,6 +73,51 @@ def _format_response(resp: ExpertAdviceResponse) -> dict[str, Any]:
     }
 
 
+def _summarize_multi_responses(responses: list[ExpertAdviceResponse]) -> dict[str, int | bool]:
+    """Aggregate per-expert outcomes for consult_multiple_experts."""
+    succeeded = sum(1 for r in responses if r.success)
+    failed = len(responses) - succeeded
+    return {
+        "success": failed == 0,
+        "partial_success": succeeded > 0 and failed > 0,
+        "succeeded_count": succeeded,
+        "failed_count": failed,
+    }
+
+
+def _error_json(message: str, **extra: Any) -> str:
+    return json.dumps({"success": False, "error": message, **extra}, indent=2)
+
+
+def _validate_consult_params(
+    query: str,
+    max_tokens: int,
+    *,
+    expert_ids: list[str] | None = None,
+) -> str | None:
+    """Return a JSON error payload if params are invalid, else None."""
+    if not query.strip():
+        return _error_json("Query must not be empty.")
+    if len(query) > settings.max_query_chars:
+        return _error_json(
+            f"Query exceeds maximum length ({settings.max_query_chars} characters).",
+        )
+    if max_tokens < 1:
+        return _error_json("max_tokens must be at least 1.")
+    if max_tokens > settings.max_output_tokens:
+        return _error_json(
+            f"max_tokens exceeds maximum ({settings.max_output_tokens}).",
+        )
+    if expert_ids is not None:
+        if not expert_ids:
+            return _error_json("At least one expert_id is required.")
+        if len(expert_ids) > settings.max_experts_per_request:
+            return _error_json(
+                f"Too many expert_ids (maximum {settings.max_experts_per_request}).",
+            )
+    return None
+
+
 # ── Tools ────────────────────────────────────────────────────────────────────
 
 
@@ -107,6 +152,9 @@ async def consult_expert(
     max_tokens: int = 2048,
 ) -> str:
     """Consult a single expert."""
+    if err := _validate_consult_params(query, max_tokens):
+        return err
+
     expert = registry.get(expert_id)
     if expert is None:
         return json.dumps({
@@ -137,6 +185,9 @@ async def consult_multiple_experts(
     max_tokens: int = 2048,
 ) -> str:
     """Consult multiple experts in parallel."""
+    if err := _validate_consult_params(query, max_tokens, expert_ids=expert_ids):
+        return err
+
     experts = []
     unknown = []
     for eid in expert_ids:
@@ -162,8 +213,9 @@ async def consult_multiple_experts(
         max_tokens=max_tokens,
     )
 
+    summary = _summarize_multi_responses(responses)
     return json.dumps({
-        "success": True,
+        **summary,
         "query": query,
         "responses": [_format_response(r) for r in responses],
         "unknown_ids": unknown,

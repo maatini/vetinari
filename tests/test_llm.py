@@ -10,6 +10,7 @@ import pytest
 # For error classification tests (Phase 1)
 from litellm.exceptions import ContentPolicyViolationError, RateLimitError
 
+from vetinari.config import Settings
 from vetinari.experts import Expert
 from vetinari.llm import (
     ExpertAdviceResponse,
@@ -131,13 +132,46 @@ class TestClassifyError:
 class TestSelectPrimaryModel:
     """Tests for primary model resolution."""
 
-    def test_uses_fallback_chain_when_no_expert_model(self) -> None:
+    @staticmethod
+    def _openai_only_settings() -> Settings:
+        return Settings(
+            _env_file=None,
+            openai_api_key="sk-test",
+            anthropic_api_key=None,
+            deepseek_api_key=None,
+        )
+
+    def test_uses_first_keyed_model_when_only_openai_key(self) -> None:
         expert = Expert(id="e1", name="E", description="D", prompt="P")
-        assert _select_primary_model(expert, None) == "anthropic/claude-3-5-sonnet-20241022"
+        cfg = self._openai_only_settings()
+        assert _select_primary_model(expert, None, cfg=cfg) == "gpt-4o-mini"
+
+    def test_uses_fallback_chain_first_when_all_keys_present(self) -> None:
+        expert = Expert(id="e1", name="E", description="D", prompt="P")
+        cfg = Settings(
+            _env_file=None,
+            openai_api_key="sk-o",
+            anthropic_api_key="sk-a",
+            deepseek_api_key="sk-d",
+        )
+        assert _select_primary_model(expert, None, cfg=cfg) == (
+            "anthropic/claude-3-5-sonnet-20241022"
+        )
 
     def test_explicit_model_wins(self) -> None:
         expert = Expert(id="e1", name="E", description="D", prompt="P")
         assert _select_primary_model(expert, "gpt-4o") == "gpt-4o"
+
+    def test_skips_expert_model_without_matching_key(self) -> None:
+        expert = Expert(
+            id="e1",
+            name="E",
+            description="D",
+            prompt="P",
+            recommended_model="anthropic/claude-3-5-sonnet-20241022",
+        )
+        cfg = self._openai_only_settings()
+        assert _select_primary_model(expert, None, cfg=cfg) == "gpt-4o-mini"
 
 
 # ── LLMRouter.consult ────────────────────────────────────────────────────────
@@ -310,15 +344,25 @@ class TestLLMRouterConsult:
         assert call_count[0] == 2  # primary + 1 fallback
 
     @pytest.mark.asyncio
-    async def test_fallback_used_true_on_success_from_secondary(self, expert: Expert) -> None:
+    async def test_fallback_used_true_on_success_from_secondary(
+        self,
+        expert: Expert,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         """Primary retriable fail -> secondary success: fallback_used + correct model."""
-        router = LLMRouter()
+        cfg = Settings(
+            _env_file=None,
+            openai_api_key="sk-test",
+            anthropic_api_key=None,
+            deepseek_api_key=None,
+        )
+        monkeypatch.setattr("vetinari.llm.settings", cfg)
+        router = LLMRouter(models=["gpt-4o-mini", "deepseek/deepseek-chat"])
 
         async def side(**kwargs):
-            # Fail only first model, succeed on others
             model = kwargs.get("model", "")
-            if "claude" in model or model == expert.recommended_model:
-                raise RateLimitError("429", llm_provider="anthropic", model=model)
+            if model == expert.recommended_model:
+                raise RateLimitError("429", llm_provider="openai", model=model)
             mock_resp = MagicMock()
             mock_resp.choices = [MagicMock()]
             mock_resp.choices[0].message.content = f"ok-from-{model}"
@@ -332,7 +376,7 @@ class TestLLMRouterConsult:
 
         assert resp.success is True
         assert resp.fallback_used is True
-        assert resp.model_used != expert.recommended_model  # used a fallback model
+        assert resp.model_used != expert.recommended_model
 
     @pytest.mark.asyncio
     async def test_resilience_settings_are_passed_to_litellm(self, expert: Expert) -> None:

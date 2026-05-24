@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Annotated
 
 import structlog
@@ -19,6 +20,14 @@ DEFAULT_FALLBACK_MODELS = [
 
 def _has_api_key(key: str | None) -> bool:
     return bool(key and key.strip())
+
+
+# LiteLLM reads provider keys from os.environ, not from pydantic Settings.
+_ENV_KEY_MAP: tuple[tuple[str, str], ...] = (
+    ("openai_api_key", "OPENAI_API_KEY"),
+    ("anthropic_api_key", "ANTHROPIC_API_KEY"),
+    ("deepseek_api_key", "DEEPSEEK_API_KEY"),
+)
 
 
 class Settings(BaseSettings):
@@ -59,6 +68,11 @@ class Settings(BaseSettings):
     cache_max_entries: int = 500
     enable_cache: bool = False
 
+    # Input limits (consult tools)
+    max_query_chars: int = 32_000
+    max_output_tokens: int = 8192
+    max_experts_per_request: int = 4
+
     @field_validator("fallback_models", mode="before")
     @classmethod
     def parse_fallback_models(cls, v: object) -> object:
@@ -73,6 +87,21 @@ class Settings(BaseSettings):
             raise ValueError("llm_max_concurrent must be >= 1")
         return v
 
+    @field_validator("max_query_chars", "max_output_tokens", "max_experts_per_request")
+    @classmethod
+    def validate_positive_limit(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("limit must be >= 1")
+        return v
+
+
+def sync_api_keys_to_env(s: Settings) -> None:
+    """Copy configured API keys into os.environ for LiteLLM."""
+    for field_name, env_name in _ENV_KEY_MAP:
+        value = getattr(s, field_name)
+        if _has_api_key(value):
+            os.environ[env_name] = value.strip()
+
 
 def validate_settings(s: Settings) -> None:
     """Validate settings at startup. Raises ValueError if misconfigured."""
@@ -86,6 +115,7 @@ def validate_settings(s: Settings) -> None:
         )
 
     _warn_missing_keys_for_models(s)
+    sync_api_keys_to_env(s)
 
 
 def _model_needs_anthropic_key(model: str) -> bool:
@@ -102,6 +132,24 @@ def _model_needs_deepseek_key(model: str) -> bool:
     return "deepseek" in model.lower()
 
 
+def model_has_api_key(model: str, s: Settings) -> bool:
+    """Return whether settings include an API key for this model's provider."""
+    if _model_needs_anthropic_key(model):
+        return _has_api_key(s.anthropic_api_key)
+    if _model_needs_openai_key(model):
+        return _has_api_key(s.openai_api_key)
+    if _model_needs_deepseek_key(model):
+        return _has_api_key(s.deepseek_api_key)
+    return True  # unknown provider — don't block custom models
+
+
+def prioritize_models_by_keys(models: list[str], s: Settings) -> list[str]:
+    """Reorder models: those with matching API keys first, preserving relative order."""
+    with_key = [m for m in models if model_has_api_key(m, s)]
+    without_key = [m for m in models if not model_has_api_key(m, s)]
+    return with_key + without_key
+
+
 def _warn_missing_keys_for_models(s: Settings) -> None:
     """Warn when fallback models may lack a matching API key (non-fatal)."""
     for model in s.fallback_models:
@@ -114,3 +162,4 @@ def _warn_missing_keys_for_models(s: Settings) -> None:
 
 
 settings = Settings()
+sync_api_keys_to_env(settings)

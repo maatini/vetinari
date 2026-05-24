@@ -10,7 +10,8 @@ from dataclasses import dataclass, field
 
 import structlog
 
-from vetinari.config import DEFAULT_FALLBACK_MODELS, settings
+from vetinari.config import DEFAULT_FALLBACK_MODELS, Settings, prioritize_models_by_keys, settings
+from vetinari.config import model_has_api_key as _model_has_api_key
 from vetinari.experts import Expert
 
 logger = structlog.get_logger(__name__)
@@ -154,15 +155,22 @@ async def _sleep_with_backoff(attempt: int, base_delay: float) -> float:
 DEFAULT_MODELS = DEFAULT_FALLBACK_MODELS
 
 
-def _select_primary_model(expert: Expert, model: str | None) -> str:
-    """Resolve the first model to try: explicit > expert > fallback chain > default."""
+def _select_primary_model(
+    expert: Expert,
+    model: str | None,
+    *,
+    cfg: Settings | None = None,
+) -> str:
+    """Resolve the first model to try: explicit > expert > keyed fallback chain > default."""
+    cfg = cfg or settings
     if model:
         return model
-    if expert.recommended_model:
+    if expert.recommended_model and _model_has_api_key(expert.recommended_model, cfg):
         return expert.recommended_model
-    if settings.fallback_models:
-        return settings.fallback_models[0]
-    return settings.default_model
+    chain = prioritize_models_by_keys(cfg.fallback_models, cfg)
+    if chain:
+        return chain[0]
+    return cfg.default_model
 
 
 class LLMRouter:
@@ -174,7 +182,10 @@ class LLMRouter:
         enable_cache: bool = False,
         max_concurrent: int | None = None,
     ) -> None:
-        self.models = list(models) if models is not None else list(settings.fallback_models)
+        self.models = prioritize_models_by_keys(
+            list(models) if models is not None else list(settings.fallback_models),
+            settings,
+        )
         self._semaphore = asyncio.Semaphore(max_concurrent or settings.llm_max_concurrent)
         self.cache = SimpleCache(
             ttl_seconds=settings.cache_ttl_seconds,
