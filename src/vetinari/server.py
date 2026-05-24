@@ -69,6 +69,7 @@ def _format_response(resp: ExpertAdviceResponse) -> dict[str, Any]:
         "retrieval_time_ms": round(resp.retrieval_time_ms, 1),
         "error": resp.error,
         "error_type": resp.error_type,
+        "error_category": resp.error_category,
     }
 
 

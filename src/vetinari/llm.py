@@ -56,10 +56,34 @@ class ExpertAdviceResponse:
     retrieval_time_ms: float = 0.0
     error: str | None = None
     error_type: str | None = None
+    error_category: str | None = None
 
     @property
     def success(self) -> bool:
         return self.error is None
+
+
+def classify_error(error: BaseException | None, error_type: str | None = None) -> str | None:
+    """Map exceptions to stable MCP-friendly error categories."""
+    if error is not None:
+        name = type(error).__name__
+    elif error_type:
+        name = error_type
+    else:
+        return None
+
+    categories: dict[str, str] = {
+        "RateLimitError": "rate_limit",
+        "Timeout": "timeout",
+        "AuthenticationError": "auth",
+        "InvalidAPIKeyError": "auth",
+        "ContentPolicyViolationError": "content_policy",
+        "ContextWindowExceededError": "context_window",
+        "ServiceUnavailableError": "service_unavailable",
+        "APIConnectionError": "connection",
+        "InternalServerError": "server_error",
+    }
+    return categories.get(name, "unknown")
 
 
 # ── Simple In-Memory Cache (opt-in) ──────────────────────────────────────────
@@ -130,6 +154,17 @@ async def _sleep_with_backoff(attempt: int, base_delay: float) -> float:
 DEFAULT_MODELS = DEFAULT_FALLBACK_MODELS
 
 
+def _select_primary_model(expert: Expert, model: str | None) -> str:
+    """Resolve the first model to try: explicit > expert > fallback chain > default."""
+    if model:
+        return model
+    if expert.recommended_model:
+        return expert.recommended_model
+    if settings.fallback_models:
+        return settings.fallback_models[0]
+    return settings.default_model
+
+
 class LLMRouter:
     """Simple LLM router: primary model → fallback, optional cache."""
 
@@ -145,6 +180,8 @@ class LLMRouter:
             ttl_seconds=settings.cache_ttl_seconds,
             max_entries=settings.cache_max_entries,
         ) if enable_cache else None
+        self._in_flight: dict[str, asyncio.Task[ExpertAdviceResponse]] = {}
+        self._in_flight_lock = asyncio.Lock()
 
     async def consult(
         self,
@@ -156,14 +193,13 @@ class LLMRouter:
     ) -> ExpertAdviceResponse:
         """Consult a single expert with fallback."""
         start_time = time.monotonic()
-        selected_model = model or expert.recommended_model or settings.default_model
+        selected_model = _select_primary_model(expert, model)
         temp = temperature if temperature is not None else settings.default_temperature
         max_tok = max_tokens or settings.max_tokens
 
         system_prompt = expert.prompt
         cache_key = f"<system>{system_prompt}</system>\n<user>{user_query}</user>"
 
-        # Check cache if enabled
         if self.cache:
             cached = await self.cache.get(cache_key, selected_model, temp, max_tok)
             if cached:
@@ -176,10 +212,47 @@ class LLMRouter:
                     retrieval_time_ms=(time.monotonic() - start_time) * 1000,
                 )
 
-        # Try primary then fallback (with LiteLLM retries + smart backoff on model switch)
+            flight_key = hashlib.sha256(
+                f"{cache_key}|{selected_model}|{temp}|{max_tok}".encode(),
+            ).hexdigest()
+            async with self._in_flight_lock:
+                inflight = self._in_flight.get(flight_key)
+                if inflight is not None:
+                    return await asyncio.shield(inflight)
+                task = asyncio.create_task(
+                    self._consult_with_llm(
+                        expert, user_query, selected_model, temp, max_tok, start_time, cache_key,
+                    ),
+                )
+                self._in_flight[flight_key] = task
+
+            try:
+                return await task
+            finally:
+                async with self._in_flight_lock:
+                    if self._in_flight.get(flight_key) is task:
+                        del self._in_flight[flight_key]
+
+        return await self._consult_with_llm(
+            expert, user_query, selected_model, temp, max_tok, start_time, cache_key,
+        )
+
+    async def _consult_with_llm(
+        self,
+        expert: Expert,
+        user_query: str,
+        selected_model: str,
+        temp: float,
+        max_tok: int,
+        start_time: float,
+        cache_key: str,
+    ) -> ExpertAdviceResponse:
+        """Run LLM fallback loop; optionally populate cache on success."""
+        system_prompt = expert.prompt
         models_to_try = [selected_model] + [m for m in self.models if m != selected_model]
         last_error: str | None = None
         last_error_type: str | None = None
+        last_error_category: str | None = None
         fallback_used = False
 
         max_retries = settings.llm_max_retries
@@ -240,6 +313,7 @@ class LLMRouter:
             except Exception as e:
                 last_error = str(e)
                 last_error_type = type(e).__name__
+                last_error_category = classify_error(e)
                 logger.error(
                     "llm_call_failed",
                     model=model_name,
@@ -279,6 +353,7 @@ class LLMRouter:
             retrieval_time_ms=elapsed_ms,
             error=last_error or "All models failed",
             error_type=last_error_type,
+            error_category=last_error_category or classify_error(None, last_error_type),
             fallback_used=fallback_used,
         )
 

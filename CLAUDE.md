@@ -38,4 +38,5 @@ architect reviewer security python
 At least one API key required — server fails fast at startup if missing.
 
 Optional: `FALLBACK_MODELS` (comma-separated fallback chain), `LLM_MAX_CONCURRENT=4`.
+Responses include `error_category` (e.g. `rate_limit`, `auth`) alongside `error_type`.
 LLM resilience: `LLM_MAX_RETRIES=2`, `LLM_RETRY_BASE_DELAY_SECONDS=0.5`, `LLM_TIMEOUT_SECONDS=90`.

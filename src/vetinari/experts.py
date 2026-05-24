@@ -41,7 +41,6 @@ EXPERTS: list[Expert] = [
             "Use ASCII/Mermaid diagrams where helpful. "
             "Always weigh cost, complexity, and team capability."
         ),
-        recommended_model="anthropic/claude-3-5-sonnet-20241022",
     ),
     Expert(
         id="reviewer",
@@ -56,7 +55,6 @@ EXPERTS: list[Expert] = [
             "narrow to root cause, propose fix + regression test. "
             "Every comment must be actionable."
         ),
-        recommended_model="anthropic/claude-3-5-sonnet-20241022",
     ),
     Expert(
         id="security",
@@ -71,7 +69,6 @@ EXPERTS: list[Expert] = [
             "Never suggest rolling your own crypto. "
             "Covers: OAuth2/OIDC, JWT, input validation, supply chain, secrets management."
         ),
-        recommended_model="anthropic/claude-3-5-sonnet-20241022",
     ),
     Expert(
         id="python",
@@ -85,7 +82,6 @@ EXPERTS: list[Expert] = [
             "Deep knowledge: async/await, context managers, decorators, GIL, memory. "
             "Show before/after code. Mention Python version requirements explicitly."
         ),
-        recommended_model="gpt-4o-mini",
     ),
 ]
 

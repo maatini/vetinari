@@ -16,6 +16,8 @@ from vetinari.llm import (
     LLMRouter,
     SimpleCache,
     UsageInfo,
+    _select_primary_model,
+    classify_error,
 )
 
 
@@ -107,6 +109,35 @@ class TestExpertAdviceResponse:
         assert resp.success is False
         assert resp.error == "Something went wrong"
         assert resp.error_type is None  # can be set by router on real errors
+        assert resp.error_category is None
+
+
+class TestClassifyError:
+    """Tests for error category mapping."""
+
+    def test_rate_limit(self) -> None:
+        assert classify_error(None, "RateLimitError") == "rate_limit"
+
+    def test_content_policy(self) -> None:
+        assert classify_error(None, "ContentPolicyViolationError") == "content_policy"
+
+    def test_unknown(self) -> None:
+        assert classify_error(None, "SomeWeirdError") == "unknown"
+
+    def test_none(self) -> None:
+        assert classify_error(None, None) is None
+
+
+class TestSelectPrimaryModel:
+    """Tests for primary model resolution."""
+
+    def test_uses_fallback_chain_when_no_expert_model(self) -> None:
+        expert = Expert(id="e1", name="E", description="D", prompt="P")
+        assert _select_primary_model(expert, None) == "anthropic/claude-3-5-sonnet-20241022"
+
+    def test_explicit_model_wins(self) -> None:
+        expert = Expert(id="e1", name="E", description="D", prompt="P")
+        assert _select_primary_model(expert, "gpt-4o") == "gpt-4o"
 
 
 # ── LLMRouter.consult ────────────────────────────────────────────────────────
@@ -238,6 +269,7 @@ class TestLLMRouterConsult:
 
         assert response.success is False
         assert response.error_type == "ContentPolicyViolationError"
+        assert response.error_category == "content_policy"
         assert response.fallback_used is False  # critical: no model switch
         assert call_count[0] == 1  # did NOT try the other 2 models
 
@@ -448,8 +480,7 @@ class TestLLMRouterCacheConcurrency:
                 )
 
         assert all(r.content == "Cached response" for r in responses)
-        initial_calls = call_count[0]
-        assert initial_calls >= 1
+        assert call_count[0] == 1
 
         await router.consult(expert, "Same query?")
-        assert call_count[0] == initial_calls
+        assert call_count[0] == 1
