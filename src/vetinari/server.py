@@ -43,6 +43,7 @@ mcp = FastMCP("Vetinari")
 router = LLMRouter(
     enable_cache=settings.enable_cache,
     models=settings.fallback_models,
+    max_concurrent=settings.llm_max_concurrent,
 )
 
 
@@ -68,6 +69,7 @@ def _format_response(resp: ExpertAdviceResponse) -> dict[str, Any]:
         "retrieval_time_ms": round(resp.retrieval_time_ms, 1),
         "error": resp.error,
         "error_type": resp.error_type,
+        "error_category": resp.error_category,
     }
 
 

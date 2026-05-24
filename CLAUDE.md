@@ -15,7 +15,7 @@ MCP server: 4 expert advisors via LLMs. LiteLLM routing, FastMCP, parallel consu
 - `src/vetinari/llm.py` — LiteLLM wrapper (fallback, optional cache)
 - `src/vetinari/experts.py` — 4 experts + registry
 - `src/vetinari/config.py` — pydantic-settings config
-- `tests/` — 39 tests (lean, consolidated into test_llm.py + focused server tests)
+- `tests/` — 50+ tests (lean, consolidated into test_llm.py + focused server tests)
 
 ## Architecture
 ```
@@ -37,5 +37,6 @@ architect reviewer security python
 `.env` for API keys: OPENAI_API_KEY, ANTHROPIC_API_KEY, DEEPSEEK_API_KEY.
 At least one API key required — server fails fast at startup if missing.
 
-Optional: `FALLBACK_MODELS` (comma-separated fallback chain).
+Optional: `FALLBACK_MODELS` (comma-separated fallback chain), `LLM_MAX_CONCURRENT=4`.
+Responses include `error_category` (e.g. `rate_limit`, `auth`) alongside `error_type`.
 LLM resilience: `LLM_MAX_RETRIES=2`, `LLM_RETRY_BASE_DELAY_SECONDS=0.5`, `LLM_TIMEOUT_SECONDS=90`.

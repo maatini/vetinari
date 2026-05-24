@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -15,6 +16,8 @@ from vetinari.llm import (
     LLMRouter,
     SimpleCache,
     UsageInfo,
+    _select_primary_model,
+    classify_error,
 )
 
 
@@ -35,43 +38,49 @@ class TestUsageInfo:
 class TestSimpleCache:
     """Tests for SimpleCache."""
 
-    def test_set_and_get(self) -> None:
+    @pytest.mark.asyncio
+    async def test_set_and_get(self) -> None:
         cache = SimpleCache(ttl_seconds=60, max_entries=10)
-        cache.set("prompt1", value="response1")
-        assert cache.get("prompt1") == "response1"
+        await cache.set("prompt1", value="response1")
+        assert await cache.get("prompt1") == "response1"
 
-    def test_miss(self) -> None:
+    @pytest.mark.asyncio
+    async def test_miss(self) -> None:
         cache = SimpleCache(ttl_seconds=60, max_entries=10)
-        assert cache.get("unknown") is None
+        assert await cache.get("unknown") is None
 
-    def test_different_model_keys(self) -> None:
+    @pytest.mark.asyncio
+    async def test_different_model_keys(self) -> None:
         cache = SimpleCache(ttl_seconds=60, max_entries=10)
-        cache.set("prompt", model="gpt-4o", value="gpt-response", temperature=0.0)
-        cache.set("prompt", model="groq/llama3", value="groq-response", temperature=0.0)
-        assert cache.get("prompt", model="gpt-4o", temperature=0.0) == "gpt-response"
-        assert cache.get("prompt", model="groq/llama3", temperature=0.0) == "groq-response"
+        await cache.set("prompt", model="gpt-4o", value="gpt-response", temperature=0.0)
+        await cache.set("prompt", model="groq/llama3", value="groq-response", temperature=0.0)
+        assert await cache.get("prompt", model="gpt-4o", temperature=0.0) == "gpt-response"
+        assert await cache.get("prompt", model="groq/llama3", temperature=0.0) == "groq-response"
 
-    def test_different_temperature_keys(self) -> None:
+    @pytest.mark.asyncio
+    async def test_different_temperature_keys(self) -> None:
         cache = SimpleCache(ttl_seconds=60, max_entries=10)
-        cache.set("prompt", model="gpt-4o", value="cold", temperature=0.0)
-        cache.set("prompt", model="gpt-4o", value="hot", temperature=1.0)
-        assert cache.get("prompt", model="gpt-4o", temperature=0.0) == "cold"
-        assert cache.get("prompt", model="gpt-4o", temperature=1.0) == "hot"
+        await cache.set("prompt", model="gpt-4o", value="cold", temperature=0.0)
+        await cache.set("prompt", model="gpt-4o", value="hot", temperature=1.0)
+        assert await cache.get("prompt", model="gpt-4o", temperature=0.0) == "cold"
+        assert await cache.get("prompt", model="gpt-4o", temperature=1.0) == "hot"
 
-    def test_max_entries_eviction(self) -> None:
+    @pytest.mark.asyncio
+    async def test_max_entries_eviction(self) -> None:
         cache = SimpleCache(ttl_seconds=60, max_entries=3)
-        cache.set("p1", value="r1")
-        cache.set("p2", value="r2")
-        cache.set("p3", value="r3")
-        cache.set("p4", value="r4")
+        await cache.set("p1", value="r1")
+        await cache.set("p2", value="r2")
+        await cache.set("p3", value="r3")
+        await cache.set("p4", value="r4")
         # Oldest entry (p1) should be evicted
-        assert cache.get("p1") is None
-        assert cache.get("p4") == "r4"
+        assert await cache.get("p1") is None
+        assert await cache.get("p4") == "r4"
 
-    def test_expired(self) -> None:
+    @pytest.mark.asyncio
+    async def test_expired(self) -> None:
         cache = SimpleCache(ttl_seconds=0, max_entries=10)
-        cache.set("p1", value="r1")
-        assert cache.get("p1") is None
+        await cache.set("p1", value="r1")
+        assert await cache.get("p1") is None
 
 
 # ── ExpertAdviceResponse ─────────────────────────────────────────────────────
@@ -100,6 +109,35 @@ class TestExpertAdviceResponse:
         assert resp.success is False
         assert resp.error == "Something went wrong"
         assert resp.error_type is None  # can be set by router on real errors
+        assert resp.error_category is None
+
+
+class TestClassifyError:
+    """Tests for error category mapping."""
+
+    def test_rate_limit(self) -> None:
+        assert classify_error(None, "RateLimitError") == "rate_limit"
+
+    def test_content_policy(self) -> None:
+        assert classify_error(None, "ContentPolicyViolationError") == "content_policy"
+
+    def test_unknown(self) -> None:
+        assert classify_error(None, "SomeWeirdError") == "unknown"
+
+    def test_none(self) -> None:
+        assert classify_error(None, None) is None
+
+
+class TestSelectPrimaryModel:
+    """Tests for primary model resolution."""
+
+    def test_uses_fallback_chain_when_no_expert_model(self) -> None:
+        expert = Expert(id="e1", name="E", description="D", prompt="P")
+        assert _select_primary_model(expert, None) == "anthropic/claude-3-5-sonnet-20241022"
+
+    def test_explicit_model_wins(self) -> None:
+        expert = Expert(id="e1", name="E", description="D", prompt="P")
+        assert _select_primary_model(expert, "gpt-4o") == "gpt-4o"
 
 
 # ── LLMRouter.consult ────────────────────────────────────────────────────────
@@ -231,6 +269,7 @@ class TestLLMRouterConsult:
 
         assert response.success is False
         assert response.error_type == "ContentPolicyViolationError"
+        assert response.error_category == "content_policy"
         assert response.fallback_used is False  # critical: no model switch
         assert call_count[0] == 1  # did NOT try the other 2 models
 
@@ -349,3 +388,99 @@ class TestLLMRouterConsultMultiple:
         for r in responses:
             assert r.success is True
             assert r.expert_id in ("e1", "e2", "e3")
+
+    @pytest.mark.asyncio
+    async def test_consult_multiple_respects_semaphore(self, experts: list[Expert]) -> None:
+        """With max_concurrent=1, only one LLM call runs at a time."""
+        router = LLMRouter(max_concurrent=1)
+        concurrent = [0]
+        max_seen = [0]
+
+        async def mock_with_delay(**kwargs):
+            concurrent[0] += 1
+            max_seen[0] = max(max_seen[0], concurrent[0])
+            await asyncio.sleep(0.05)
+            concurrent[0] -= 1
+            mock_response = MagicMock()
+            mock_response.choices = [MagicMock()]
+            mock_response.choices[0].message.content = "Response"
+            mock_response.usage = MagicMock()
+            return mock_response
+
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock:
+            mock.side_effect = mock_with_delay
+            with patch("litellm.completion_cost", return_value=0.0):
+                await router.consult_multiple(experts, "Test query")
+
+        assert max_seen[0] == 1
+
+    @pytest.mark.asyncio
+    async def test_semaphore_default_allows_parallel(self, experts: list[Expert]) -> None:
+        """With max_concurrent=4, three experts can run in parallel."""
+        router = LLMRouter(max_concurrent=4)
+        concurrent = [0]
+        max_seen = [0]
+
+        async def mock_with_delay(**kwargs):
+            concurrent[0] += 1
+            max_seen[0] = max(max_seen[0], concurrent[0])
+            await asyncio.sleep(0.05)
+            concurrent[0] -= 1
+            mock_response = MagicMock()
+            mock_response.choices = [MagicMock()]
+            mock_response.choices[0].message.content = "Response"
+            mock_response.usage = MagicMock()
+            return mock_response
+
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock:
+            mock.side_effect = mock_with_delay
+            with patch("litellm.completion_cost", return_value=0.0):
+                await router.consult_multiple(experts, "Test query")
+
+        assert max_seen[0] == 3
+
+
+class TestLLMRouterCacheConcurrency:
+    """Tests for cache under concurrent access."""
+
+    @pytest.fixture
+    def expert(self) -> Expert:
+        return Expert(
+            id="cache-expert",
+            name="Cache Expert",
+            description="D",
+            prompt="You are a test expert.",
+            recommended_model="gpt-4o-mini",
+        )
+
+    @pytest.mark.asyncio
+    async def test_cache_concurrent_access(self, expert: Expert) -> None:
+        """Concurrent consults with same prompt: cache serves follow-up without LLM."""
+        router = LLMRouter(enable_cache=True, max_concurrent=4)
+        call_count = [0]
+
+        async def mock_llm(**kwargs):
+            call_count[0] += 1
+            await asyncio.sleep(0.02)
+            mock_response = MagicMock()
+            mock_response.choices = [MagicMock()]
+            mock_response.choices[0].message.content = "Cached response"
+            mock_response.usage = MagicMock()
+            mock_response.usage.prompt_tokens = 10
+            mock_response.usage.completion_tokens = 5
+            return mock_response
+
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock:
+            mock.side_effect = mock_llm
+            with patch("litellm.completion_cost", return_value=0.0):
+                responses = await asyncio.gather(
+                    router.consult(expert, "Same query?"),
+                    router.consult(expert, "Same query?"),
+                    router.consult(expert, "Same query?"),
+                )
+
+        assert all(r.content == "Cached response" for r in responses)
+        assert call_count[0] == 1
+
+        await router.consult(expert, "Same query?")
+        assert call_count[0] == 1
