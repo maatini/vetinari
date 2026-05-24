@@ -21,6 +21,7 @@ class TestSettings:
         assert settings.default_temperature == 0.7
         assert settings.max_tokens == 2048
         assert settings.fallback_models == DEFAULT_FALLBACK_MODELS
+        assert settings.llm_max_concurrent == 4
         assert settings.cache_ttl_seconds == 300
         assert settings.cache_max_entries == 500
         assert settings.enable_cache is False
@@ -56,6 +57,10 @@ class TestSettings:
         monkeypatch.setenv("FALLBACK_MODELS", "gpt-4o, deepseek/deepseek-chat")
         s = Settings()
         assert s.fallback_models == ["gpt-4o", "deepseek/deepseek-chat"]
+
+    def test_llm_max_concurrent_invalid(self) -> None:
+        with pytest.raises(ValueError, match="llm_max_concurrent"):
+            Settings(llm_max_concurrent=0)
 
 
 class TestValidateSettings:

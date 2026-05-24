@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     llm_max_retries: int = 2
     llm_retry_base_delay_seconds: float = 0.5
     llm_timeout_seconds: float | None = 90.0
+    llm_max_concurrent: int = 4
 
     # Optional cache (off by default)
     cache_ttl_seconds: int = 300
@@ -63,6 +64,13 @@ class Settings(BaseSettings):
     def parse_fallback_models(cls, v: object) -> object:
         if isinstance(v, str):
             return [m.strip() for m in v.split(",") if m.strip()]
+        return v
+
+    @field_validator("llm_max_concurrent")
+    @classmethod
+    def validate_max_concurrent(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("llm_max_concurrent must be >= 1")
         return v
 
 
