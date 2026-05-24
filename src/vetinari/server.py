@@ -43,6 +43,7 @@ mcp = FastMCP("Vetinari")
 router = LLMRouter(
     enable_cache=settings.enable_cache,
     models=settings.fallback_models,
+    max_concurrent=settings.llm_max_concurrent,
 )
 
 

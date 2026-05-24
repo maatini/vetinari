@@ -73,8 +73,8 @@ Add to your `.mcp.json`:
 - **Startup validation** — server exits immediately with a clear error if no API key is configured
 - **Resilient LLM calls** — LiteLLM automatically retries on rate limits, timeouts and transient errors. Cross-model fallback with exponential backoff + jitter. Fatal errors (content policy violations, context window exceeded) fail fast without unnecessary fallback attempts.
 - **Smart model routing** — Tries your preferred model first, then falls back through a configurable chain (default: Claude 3.5 Sonnet → GPT-4o-mini → DeepSeek).
-- **Parallel consultation** — `consult_multiple_experts` queries several experts at the same time using `asyncio.gather`
-- **Optional response cache** — enable with `ENABLE_CACHE=true` (in-memory, per-process)
+- **Parallel consultation** — `consult_multiple_experts` queries several experts at the same time using `asyncio.gather`, with a concurrency limit to reduce rate-limit pressure
+- **Optional response cache** — enable with `ENABLE_CACHE=true` (in-memory, per-process, async-safe)
 - **Usage tracking** — every response includes token counts and estimated `cost_usd` for the call
 
 The three models are chosen for a good balance of quality, speed, and cost.
@@ -100,6 +100,7 @@ FALLBACK_MODELS=anthropic/claude-3-5-sonnet-20241022,gpt-4o-mini,deepseek/deepse
 LLM_MAX_RETRIES=2
 LLM_RETRY_BASE_DELAY_SECONDS=0.5
 LLM_TIMEOUT_SECONDS=90
+LLM_MAX_CONCURRENT=4
 ```
 
 ## Dev

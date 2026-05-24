@@ -66,35 +66,37 @@ class ExpertAdviceResponse:
 
 
 class SimpleCache:
-    """Minimal TTL cache — no locking needed for single-user scenario."""
+    """Minimal TTL cache with asyncio lock for concurrent access."""
 
     def __init__(self, ttl_seconds: int = 300, max_entries: int = 500) -> None:
         self._ttl = ttl_seconds
         self._max = max_entries
         self._data: dict[str, tuple[float, str]] = {}
+        self._lock = asyncio.Lock()
 
     def _key(self, prompt: str, model: str, temperature: float, max_tokens: int) -> str:
         raw = f"{prompt}|{model}|{temperature}|{max_tokens}"
         return hashlib.sha256(raw.encode()).hexdigest()
 
-    def get(
+    async def get(
         self,
         prompt: str,
         model: str = "",
         temperature: float = 0.0,
         max_tokens: int = 0,
     ) -> str | None:
-        key = self._key(prompt, model, temperature, max_tokens)
-        entry = self._data.get(key)
-        if entry is None:
-            return None
-        ts, value = entry
-        if time.monotonic() - ts > self._ttl:
-            del self._data[key]
-            return None
-        return value
+        async with self._lock:
+            key = self._key(prompt, model, temperature, max_tokens)
+            entry = self._data.get(key)
+            if entry is None:
+                return None
+            ts, value = entry
+            if time.monotonic() - ts > self._ttl:
+                del self._data[key]
+                return None
+            return value
 
-    def set(
+    async def set(
         self,
         prompt: str,
         model: str = "",
@@ -102,12 +104,12 @@ class SimpleCache:
         temperature: float = 0.0,
         max_tokens: int = 0,
     ) -> None:
-        key = self._key(prompt, model, temperature, max_tokens)
-        if len(self._data) >= self._max:
-            # Remove oldest entry
-            oldest = min(self._data, key=lambda k: self._data[k][0])
-            del self._data[oldest]
-        self._data[key] = (time.monotonic(), value)
+        async with self._lock:
+            key = self._key(prompt, model, temperature, max_tokens)
+            if len(self._data) >= self._max:
+                oldest = min(self._data, key=lambda k: self._data[k][0])
+                del self._data[oldest]
+            self._data[key] = (time.monotonic(), value)
 
 
 # ── Resilience Helpers ───────────────────────────────────────────────────────
@@ -135,8 +137,10 @@ class LLMRouter:
         self,
         models: list[str] | None = None,
         enable_cache: bool = False,
+        max_concurrent: int | None = None,
     ) -> None:
         self.models = list(models) if models is not None else list(settings.fallback_models)
+        self._semaphore = asyncio.Semaphore(max_concurrent or settings.llm_max_concurrent)
         self.cache = SimpleCache(
             ttl_seconds=settings.cache_ttl_seconds,
             max_entries=settings.cache_max_entries,
@@ -161,7 +165,7 @@ class LLMRouter:
 
         # Check cache if enabled
         if self.cache:
-            cached = self.cache.get(cache_key, selected_model, temp, max_tok)
+            cached = await self.cache.get(cache_key, selected_model, temp, max_tok)
             if cached:
                 logger.info("cache_hit", expert_id=expert.id, model=selected_model)
                 return ExpertAdviceResponse(
@@ -193,19 +197,20 @@ class LLMRouter:
                 )
 
             try:
-                result = await self._call_llm(
-                    model_name,
-                    system_prompt,
-                    user_query,
-                    temp,
-                    max_tok,
-                    timeout=timeout,
-                    max_retries=max_retries,
-                )
+                async with self._semaphore:
+                    result = await self._call_llm(
+                        model_name,
+                        system_prompt,
+                        user_query,
+                        temp,
+                        max_tok,
+                        timeout=timeout,
+                        max_retries=max_retries,
+                    )
 
                 # Cache if enabled
                 if self.cache:
-                    self.cache.set(cache_key, model_name, result["content"], temp, max_tok)
+                    await self.cache.set(cache_key, model_name, result["content"], temp, max_tok)
 
                 usage = UsageInfo(
                     prompt_tokens=result.get("prompt_tokens", 0),
