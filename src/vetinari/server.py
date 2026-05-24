@@ -17,7 +17,7 @@ from typing import Any
 import structlog
 from mcp.server.fastmcp import FastMCP
 
-from vetinari.config import settings
+from vetinari.config import settings, validate_settings
 from vetinari.experts import registry
 from vetinari.llm import ExpertAdviceResponse, LLMRouter
 
@@ -40,7 +40,10 @@ structlog.configure(
 logging.basicConfig(format="%(message)s", stream=sys.stderr, level=settings.log_level)
 
 mcp = FastMCP("Vetinari")
-router = LLMRouter(enable_cache=settings.enable_cache)
+router = LLMRouter(
+    enable_cache=settings.enable_cache,
+    models=settings.fallback_models,
+)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -190,6 +193,11 @@ async def get_expert_prompt(expert_id: str) -> str:
 
 def main() -> None:
     """Entry point for the MCP server."""
+    try:
+        validate_settings(settings)
+    except ValueError as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(1)
     mcp.run()
 
 
