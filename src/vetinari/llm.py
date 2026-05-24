@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 
 import structlog
 
-from vetinari.config import settings
+from vetinari.config import DEFAULT_FALLBACK_MODELS, settings
 from vetinari.experts import Expert
 
 logger = structlog.get_logger(__name__)
@@ -125,11 +125,7 @@ async def _sleep_with_backoff(attempt: int, base_delay: float) -> float:
 # ── LLM Router ───────────────────────────────────────────────────────────────
 
 
-DEFAULT_MODELS = [
-    "anthropic/claude-3-5-sonnet-20241022",
-    "gpt-4o-mini",
-    "deepseek/deepseek-chat",
-]
+DEFAULT_MODELS = DEFAULT_FALLBACK_MODELS
 
 
 class LLMRouter:
@@ -140,7 +136,7 @@ class LLMRouter:
         models: list[str] | None = None,
         enable_cache: bool = False,
     ) -> None:
-        self.models = list(models) if models else list(DEFAULT_MODELS)
+        self.models = list(models) if models is not None else list(settings.fallback_models)
         self.cache = SimpleCache(
             ttl_seconds=settings.cache_ttl_seconds,
             max_entries=settings.cache_max_entries,

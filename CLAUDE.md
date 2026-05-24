@@ -35,6 +35,7 @@ architect reviewer security python
 
 ## Config
 `.env` for API keys: OPENAI_API_KEY, ANTHROPIC_API_KEY, DEEPSEEK_API_KEY.
-At least one API key required.
+At least one API key required — server fails fast at startup if missing.
 
-LLM resilience (optional): `LLM_MAX_RETRIES=2`, `LLM_RETRY_BASE_DELAY_SECONDS=0.5`, `LLM_TIMEOUT_SECONDS=90`.
+Optional: `FALLBACK_MODELS` (comma-separated fallback chain).
+LLM resilience: `LLM_MAX_RETRIES=2`, `LLM_RETRY_BASE_DELAY_SECONDS=0.5`, `LLM_TIMEOUT_SECONDS=90`.
